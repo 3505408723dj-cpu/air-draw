@@ -346,21 +346,23 @@
 
         const FLORA_CONFIG = {
             maxElements: 350,
-            spawnDensity: 10,
+            spawnDensity: 12,
             stemMin: 10,
-            stemMax: 45,
-            flowerChance: 0.55,
-            petalCountMin: 4,
-            petalCountMax: 8,
-            petalSizeMin: 2.0,
-            petalSizeMax: 5.5,
+            stemMax: 50,
+            petalSizeMin: 3.0,
+            petalSizeMax: 7.0,
             leafCountMin: 1,
-            leafCountMax: 3,
-            grassChance: 0.35,
+            leafCountMax: 4,
+            // 5 种植物类型权重
+            typeWeights: [0.28, 0.25, 0.15, 0.17, 0.15], // rose, daisy, tulip, fern, vine
             leafColors: [
-                '#228B22','#2E8B57','#3CB371','#66CDAA','#90EE90',
-                '#00FA9A','#00FF7F','#7CFC00','#32CD32','#556B2F',
-                '#8FBC8F','#20B2AA','#48C9B0','#27AE60','#1E8449',
+                '#1B5E20','#2E7D32','#388E3C','#43A047','#4CAF50',
+                '#558B2F','#33691E','#689F38','#7CB342','#8BC34A',
+                '#2E8B57','#3CB371','#228B22','#006400','#1E8449',
+            ],
+            stemColors: [
+                '#2E7D32','#1B5E20','#388E3C','#4A7C3F','#3D6B35',
+                '#556B2F','#5D7A3A','#33691E','#3E6B27','#4A7A2E',
             ],
         };
 
@@ -637,13 +639,15 @@
         }
 
         // ============================================================
-        //  花草元素 — 单株植物
+        //  花草元素 — 写实风格单株植物（5 种类型）
+        //  类型：0=玫瑰, 1=雏菊, 2=郁金香, 3=蕨叶, 4=藤蔓
         // ============================================================
         class FloraElement {
             constructor() {
                 this.alive = false;
                 this.leaves = [];
-                this.petalAngles = [];
+                this.petals = [];
+                this.fernLeaflets = [];
             }
 
             reset(x, y, strokeColor) {
@@ -651,146 +655,408 @@
                 this.x = x;
                 this.y = y;
                 this.growth = 0;
-                // 生长速度：1.8~4 秒长满（60fps: 0.005~0.012 per frame）
-                this.growthSpeed = 0.005 + Math.random() * 0.012;
+                this.growthSpeed = 0.004 + Math.random() * 0.01;
                 this.stemHeight = FLORA_CONFIG.stemMin + Math.random() * (FLORA_CONFIG.stemMax - FLORA_CONFIG.stemMin);
-                this.stemAngle = (Math.random() - 0.5) * 0.6;
-                this.stemCurve = (Math.random() - 0.5) * 0.4;
+                this.stemAngle = (Math.random() - 0.5) * 0.5;
+                this.stemCurve = (Math.random() - 0.5) * 0.35;
+                this.stemWidth = 1.2 + Math.random() * 1.6;
+
+                // 按权重选择植物类型
+                const tw = FLORA_CONFIG.typeWeights;
+                const r = Math.random();
+                let acc = 0;
+                this.plantType = 0;
+                for (let i = 0; i < tw.length; i++) { acc += tw[i]; if (r < acc) { this.plantType = i; break; } }
 
                 const hsl = hexToHsl(strokeColor);
-                this.hasFlower = Math.random() < FLORA_CONFIG.flowerChance;
-                this.flowerHue = (hsl.h + (Math.random() - 0.5) * 50 + 360) % 360;
-                this.flowerSat = 55 + Math.random() * 35;
-                this.flowerLight = 48 + Math.random() * 35;
-                this.petalCount = FLORA_CONFIG.petalCountMin + Math.floor(Math.random() * (FLORA_CONFIG.petalCountMax - FLORA_CONFIG.petalCountMin + 1));
-                this.petalRadius = FLORA_CONFIG.petalSizeMin + Math.random() * (FLORA_CONFIG.petalSizeMax - FLORA_CONFIG.petalSizeMin);
+                this.flowerHue = (hsl.h + (Math.random() - 0.5) * 40 + 360) % 360;
+                this.flowerSat = 50 + Math.random() * 35;
+                this.flowerLight = 45 + Math.random() * 30;
+                // 花色微调（每片花瓣略有不同）
+                this.petalHueVar = (Math.random() - 0.5) * 15;
 
                 const lc = FLORA_CONFIG.leafColors;
                 this.leafColor = lc[Math.floor(Math.random() * lc.length)];
+                this.stemColor = FLORA_CONFIG.stemColors[Math.floor(Math.random() * FLORA_CONFIG.stemColors.length)];
+                // 第二片叶色（微调用于层次感）
+                this.leafColor2 = lc[Math.floor(Math.random() * lc.length)];
 
+                // ---- 类型特定数据 ----
                 this.leafCount = FLORA_CONFIG.leafCountMin + Math.floor(Math.random() * (FLORA_CONFIG.leafCountMax - FLORA_CONFIG.leafCountMin + 1));
                 this.leaves = [];
                 for (let i = 0; i < this.leafCount; i++) {
                     this.leaves.push({
-                        t: 0.25 + (i / (this.leafCount + 1)) * 0.55,
-                        angle: this.stemAngle + (i % 2 === 0 ? 1 : -1) * (0.45 + Math.random() * 0.45),
-                        size: 2.5 + Math.random() * 5.5,
+                        t: 0.22 + (i / (this.leafCount + 1)) * 0.58,
+                        angle: this.stemAngle + (i % 2 === 0 ? 1 : -1) * (0.4 + Math.random() * 0.5),
+                        size: 3.0 + Math.random() * 7.0,
                     });
                 }
 
-                this.petalAngles = [];
-                const baseOffset = Math.random() * Math.PI * 2;
-                for (let i = 0; i < this.petalCount; i++) {
-                    this.petalAngles.push(baseOffset + (i / this.petalCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.35);
+                switch (this.plantType) {
+                    case 0: // 玫瑰 — 多层花瓣
+                        this.petalLayers = 2 + Math.floor(Math.random() * 2); // 2-3 层
+                        this.petalsPerLayer = [];
+                        this.petalData = [];
+                        for (let lay = 0; lay < this.petalLayers; lay++) {
+                            const count = 4 + Math.floor(Math.random() * 3); // 4-6 per layer
+                            const radius = 3.0 + Math.random() * 3.5;
+                            const layOffset = Math.random() * Math.PI * 2;
+                            for (let i = 0; i < count; i++) {
+                                this.petalData.push({
+                                    layer: lay,
+                                    angle: layOffset + (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.3,
+                                    length: radius + lay * 1.2 + Math.random() * 1.5,
+                                    width: 1.5 + lay * 0.4 + Math.random() * 1.0,
+                                    hueShift: (Math.random() - 0.5) * 20,
+                                    lightShift: lay * 8 + Math.random() * 5,
+                                });
+                            }
+                        }
+                        break;
+                    case 1: // 雏菊 — 单层放射状花瓣
+                        this.daisyPetalCount = 8 + Math.floor(Math.random() * 8);
+                        this.daisyPetalLen = 4.0 + Math.random() * 4.5;
+                        this.daisyPetalWid = 1.2 + Math.random() * 2.0;
+                        this.daisyCenterSize = 1.8 + Math.random() * 2.2;
+                        this.petalData = [];
+                        const daisyOffset = Math.random() * Math.PI * 2;
+                        for (let i = 0; i < this.daisyPetalCount; i++) {
+                            this.petalData.push({
+                                angle: daisyOffset + (i / this.daisyPetalCount) * Math.PI * 2,
+                                length: this.daisyPetalLen + (Math.random() - 0.5) * 1.5,
+                                width: this.daisyPetalWid + (Math.random() - 0.5) * 0.8,
+                                hueShift: (Math.random() - 0.5) * 12,
+                                lightShift: Math.random() * 8,
+                            });
+                        }
+                        break;
+                    case 2: // 郁金香 — 杯状 3-4 片包围
+                        this.tulipPetalCount = 3 + Math.floor(Math.random() * 2);
+                        this.tulipHeight = 6.0 + Math.random() * 6.0;
+                        this.tulipWidth = 3.0 + Math.random() * 3.0;
+                        this.stemHeight += 6; // 郁金香茎更长
+                        this.petalData = [];
+                        for (let i = 0; i < this.tulipPetalCount; i++) {
+                            this.petalData.push({
+                                angle: (i / this.tulipPetalCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.4,
+                                tilt: -0.3 + Math.random() * 0.6, // 向外展开角度
+                            });
+                        }
+                        break;
+                    case 3: // 蕨叶 — 羽状复叶
+                        this.fernFrondCount = 1 + Math.floor(Math.random() * 3);
+                        this.fernLeafletCount = 6 + Math.floor(Math.random() * 10);
+                        this.fernFrondLen = 12 + Math.random() * 25;
+                        this.fernLeaflets = [];
+                        for (let f = 0; f < this.fernFrondCount; f++) {
+                            const fAngle = this.stemAngle + (f - (this.fernFrondCount - 1) / 2) * 0.25;
+                            const fLen = this.fernFrondLen * (0.6 + Math.random() * 0.4);
+                            const leafletCount = 4 + Math.floor(Math.random() * 8);
+                            for (let i = 0; i < leafletCount; i++) {
+                                this.fernLeaflets.push({
+                                    frond: f,
+                                    frondAngle: fAngle,
+                                    frondLen: fLen,
+                                    t: 0.15 + (i / (leafletCount + 1)) * 0.7,
+                                    size: 2.0 + (1 - i / leafletCount) * 3.5 + Math.random() * 2.0,
+                                    side: i % 2 === 0 ? 1 : -1,
+                                });
+                            }
+                        }
+                        break;
+                    case 4: // 藤蔓 — 卷曲茎 + 小叶子
+                        this.vineCurls = 2 + Math.floor(Math.random() * 3);
+                        this.vineLen = 15 + Math.random() * 30;
+                        this.vineLeaves = [];
+                        for (let i = 0; i < 4 + Math.floor(Math.random() * 5); i++) {
+                            this.vineLeaves.push({
+                                t: 0.1 + Math.random() * 0.8,
+                                angle: (Math.random() - 0.5) * 1.2,
+                                size: 1.5 + Math.random() * 3.5,
+                                side: Math.random() < 0.5 ? -1 : 1,
+                            });
+                        }
+                        break;
                 }
-
-                this.isGrass = !this.hasFlower && Math.random() < FLORA_CONFIG.grassChance;
             }
 
             update(dt) {
                 if (!this.alive) return;
                 this.growth += this.growthSpeed;
-                if (this.growth >= 1) {
-                    this.growth = 1;
-                }
+                if (this.growth >= 1) this.growth = 1;
             }
 
-            render(ctx) {
-                if (!this.alive || this.growth <= 0.01) return;
+            // 辅助：画写实叶子（带叶脉）
+            _drawLeaf(ctx, x, y, size, angle, color, alpha) {
+                ctx.save();
+                ctx.globalAlpha = alpha;
+                ctx.translate(x, y);
+                ctx.rotate(angle);
+                // 叶片
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.moveTo(0, -size);
+                ctx.bezierCurveTo(size * 0.45, -size * 0.55, size * 0.35, size * 0.3, 0, size * 0.4);
+                ctx.bezierCurveTo(-size * 0.35, size * 0.3, -size * 0.45, -size * 0.55, 0, -size);
+                ctx.fill();
+                // 叶脉
+                ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+                ctx.lineWidth = 0.3;
+                ctx.beginPath();
+                ctx.moveTo(0, -size * 0.9);
+                ctx.lineTo(0, size * 0.3);
+                ctx.stroke();
+                // 细侧脉
+                ctx.lineWidth = 0.15;
+                for (let v = -1; v <= 1; v += 2) {
+                    for (let j = 1; j <= 2; j++) {
+                        const vt = -size * 0.2 * j;
+                        ctx.beginPath();
+                        ctx.moveTo(0, vt);
+                        ctx.lineTo(v * size * 0.2 * j * 0.6, vt + size * 0.08);
+                        ctx.stroke();
+                    }
+                }
+                ctx.restore();
+            }
 
-                const g = this.growth;
-                // easeOutCubic
+            // 辅助：画花瓣（泪滴/椭圆形状）
+            _drawPetal(ctx, x, y, length, width, angle, hue, sat, light, alpha) {
+                ctx.save();
+                ctx.globalAlpha = alpha;
+                ctx.translate(x, y);
+                ctx.rotate(angle);
+                // 花瓣渐变（基部深 → 尖端浅）
+                const grad = ctx.createLinearGradient(0, length * 0.2, 0, -length);
+                grad.addColorStop(0, `hsla(${hue}, ${sat}%, ${light - 8}%, 0.95)`);
+                grad.addColorStop(0.5, `hsla(${hue}, ${sat}%, ${light}%, 0.9)`);
+                grad.addColorStop(1, `hsla(${hue + 5}, ${sat - 5}%, ${light + 10}%, 0.85)`);
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.moveTo(0, length * 0.1); // 基部
+                ctx.bezierCurveTo(width, length * 0.1, width, -length * 0.6, 0, -length); // 右
+                ctx.bezierCurveTo(-width, -length * 0.6, -width, length * 0.1, 0, length * 0.1); // 左
+                ctx.fill();
+                // 花瓣中脉
+                ctx.strokeStyle = `hsla(${hue}, ${sat - 10}%, ${light - 5}%, 0.2)`;
+                ctx.lineWidth = 0.25;
+                ctx.beginPath();
+                ctx.moveTo(0, length * 0.05);
+                ctx.lineTo(0, -length * 0.8);
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            render(ctx, forceFull = false) {
+                if (!this.alive) return;
+                const g = forceFull ? 1 : this.growth;
+                if (g <= 0.01) return;
                 const ease = 1 - Math.pow(1 - g, 3);
                 const h = this.stemHeight * ease;
                 const a = this.stemAngle;
+                const c = this.stemCurve;
                 const endX = this.x + Math.sin(a) * h;
                 const endY = this.y - Math.cos(a) * h;
-                const cpX = this.x + Math.sin(a + this.stemCurve) * h * 0.55;
-                const cpY = this.y - Math.cos(a + this.stemCurve) * h * 0.55;
+                const cpX = this.x + Math.sin(a + c) * h * 0.55;
+                const cpY = this.y - Math.cos(a + c) * h * 0.55;
+                const alpha = Math.min(1, g * 2.5);
 
-                // --- 茎 ---
+                // ---- 茎（宽度渐变：基部粗→尖端细） ----
+                const sw = this.stemWidth * (1 - g * 0.3);
                 ctx.save();
-                ctx.strokeStyle = this.leafColor;
-                ctx.lineWidth = Math.max(0.6, 1.6 * (1 - g * 0.25));
+                ctx.globalAlpha = alpha;
+                ctx.strokeStyle = this.stemColor;
+                ctx.lineWidth = Math.max(0.5, sw);
                 ctx.lineCap = 'round';
-                ctx.globalAlpha = Math.min(1, g * 2);
                 ctx.beginPath();
                 ctx.moveTo(this.x, this.y);
                 ctx.quadraticCurveTo(cpX, cpY, endX, endY);
                 ctx.stroke();
+                // 茎的亮面（高光线，增加立体感）
+                ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+                ctx.lineWidth = Math.max(0.2, sw * 0.3);
+                ctx.beginPath();
+                ctx.moveTo(this.x + 0.3, this.y);
+                ctx.quadraticCurveTo(cpX + 0.3, cpY, endX + 0.3, endY);
+                ctx.stroke();
                 ctx.restore();
 
-                // --- 叶子 ---
+                // ---- 叶子 ----
                 if (g > 0.2) {
-                    const leafAlpha = Math.min(1, (g - 0.2) / 0.6);
+                    const leafAlpha = Math.min(1, (g - 0.2) / 0.6) * 0.88;
                     for (const leaf of this.leaves) {
                         const lt = leaf.t;
-                        const lx = this.x + Math.sin(a + this.stemCurve * lt * 2) * h * lt;
-                        const ly = this.y - Math.cos(a + this.stemCurve * lt * 2) * h * lt;
+                        const lx = this.x + Math.sin(a + c * lt * 2) * h * lt;
+                        const ly = this.y - Math.cos(a + c * lt * 2) * h * lt;
                         const ls = leaf.size * ease;
-
-                        ctx.save();
-                        ctx.globalAlpha = leafAlpha * 0.85;
-                        ctx.fillStyle = this.leafColor;
-                        ctx.beginPath();
-                        ctx.ellipse(lx, ly, ls, ls * 0.3, leaf.angle, 0, Math.PI * 2);
-                        ctx.fill();
-                        ctx.restore();
+                        const lc = leaf.angle < 0 ? this.leafColor : this.leafColor2;
+                        this._drawLeaf(ctx, lx, ly, ls, leaf.angle, lc, leafAlpha);
                     }
                 }
 
-                // --- 花朵 ---
-                if (this.hasFlower && g > 0.65) {
-                    const bloom = Math.min(1, (g - 0.65) / 0.35);
-                    const bloomEase = 1 - Math.pow(1 - bloom, 2);
-                    const pr = this.petalRadius * bloomEase;
-                    const px = endX;
-                    const py = endY;
+                if (g < 0.3) return; // 早期只显示茎和叶子
 
-                    // 花瓣
-                    for (const pa of this.petalAngles) {
-                        const petalX = px + Math.cos(pa) * pr;
-                        const petalY = py + Math.sin(pa) * pr;
+                const pt = this.plantType;
+
+                // ---- 蕨叶（类型 3） ----
+                if (pt === 3) {
+                    for (const fl of this.fernLeaflets) {
+                        const fAngle = fl.frondAngle;
+                        const fLen = fl.frondLen * ease;
+                        const bx = this.x + Math.sin(fAngle) * h * 0.3;
+                        const by = this.y - Math.cos(fAngle) * h * 0.3;
+                        const ft = fl.t;
+                        const fx = bx + Math.sin(fAngle) * fLen * ft;
+                        const fy = by - Math.cos(fAngle) * fLen * ft;
+                        const fs = fl.size * ease;
+                        const fAlpha = alpha * 0.8;
                         ctx.save();
-                        ctx.globalAlpha = bloomEase * 0.9;
-                        ctx.fillStyle = `hsl(${this.flowerHue}, ${this.flowerSat}%, ${this.flowerLight}%)`;
+                        ctx.globalAlpha = fAlpha;
+                        ctx.fillStyle = fl.side > 0 ? this.leafColor : this.leafColor2;
                         ctx.beginPath();
-                        ctx.arc(petalX, petalY, pr * 0.65, 0, Math.PI * 2);
+                        ctx.ellipse(fx, fy, fs, fs * 0.28, fAngle + fl.side * 0.8, 0, Math.PI * 2);
                         ctx.fill();
                         ctx.restore();
                     }
+                    return;
+                }
 
+                // ---- 藤蔓（类型 4） ----
+                if (pt === 4) {
+                    // 卷曲藤蔓
+                    const vl = this.vineLen * ease;
+                    const curls = this.vineCurls;
+                    ctx.save();
+                    ctx.globalAlpha = alpha;
+                    ctx.strokeStyle = this.stemColor;
+                    ctx.lineWidth = Math.max(0.3, 0.9 * ease);
+                    ctx.lineCap = 'round';
+                    ctx.beginPath();
+                    let cx = endX, cy = endY;
+                    ctx.moveTo(cx, cy);
+                    for (let i = 0; i < curls; i++) {
+                        const ct = (i + 1) / curls;
+                        const curlR = vl * 0.08 * (1 - ct * 0.7);
+                        const curlA = a + ct * Math.PI * 1.5 + (i % 2) * Math.PI;
+                        cx += Math.cos(curlA) * curlR * 3;
+                        cy -= Math.sin(curlA) * curlR * 3;
+                        ctx.quadraticCurveTo(
+                            cx + Math.cos(curlA + 1) * curlR, cy - Math.sin(curlA + 1) * curlR,
+                            cx, cy
+                        );
+                    }
+                    ctx.stroke();
+                    ctx.restore();
+                    // 藤蔓小叶
+                    for (const vl of this.vineLeaves) {
+                        if (g < vl.t + 0.2) continue;
+                        const vt = vl.t;
+                        const vAlpha = Math.min(1, (g - vt - 0.2) / 0.3) * 0.8;
+                        const vx = this.x + Math.sin(a) * h + (endX - this.x - Math.sin(a) * h) * vt + vl.side * 4;
+                        const vy = this.y - Math.cos(a) * h + (endY - this.y + Math.cos(a) * h) * vt;
+                        const vs = vl.size * ease;
+                        ctx.save();
+                        ctx.globalAlpha = vAlpha;
+                        ctx.fillStyle = vl.side > 0 ? this.leafColor : this.leafColor2;
+                        // 心形小叶
+                        ctx.beginPath();
+                        ctx.moveTo(vx, vy - vs);
+                        ctx.bezierCurveTo(vx + vs * 0.6, vy - vs * 0.7, vx + vs * 0.6, vy, vx, vy + vs * 0.3);
+                        ctx.bezierCurveTo(vx - vs * 0.6, vy, vx - vs * 0.6, vy - vs * 0.7, vx, vy - vs);
+                        ctx.fill();
+                        ctx.restore();
+                    }
+                    return;
+                }
+
+                if (g < 0.6) return; // 花朵在后期出现
+
+                const bloomRaw = Math.min(1, (g - 0.6) / 0.4);
+                const bloom = 1 - Math.pow(1 - bloomRaw, 2);
+
+                // ---- 玫瑰（类型 0） ----
+                if (pt === 0) {
+                    // 按层排序（内层先画，外层后画包住）
+                    const sortedPetals = [...this.petalData].sort((a, b) => b.layer - a.layer);
+                    for (const p of sortedPetals) {
+                        const pd = p.length * bloom;
+                        const pw = p.width * bloom;
+                        const pDist = p.layer * 1.5 * bloom;
+                        const pAlpha = bloom * 0.9;
+                        const px = endX + Math.cos(p.angle) * pDist;
+                        const py = endY + Math.sin(p.angle) * pDist;
+                        this._drawPetal(ctx, px, py, pd, pw, p.angle + Math.PI * 0.5,
+                            this.flowerHue + p.hueShift, this.flowerSat,
+                            this.flowerLight + p.lightShift, pAlpha);
+                    }
                     // 花心
                     ctx.save();
-                    ctx.globalAlpha = bloomEase;
-                    ctx.fillStyle = '#FFE066';
-                    ctx.shadowBlur = 3;
-                    ctx.shadowColor = 'rgba(255,224,102,0.5)';
+                    ctx.globalAlpha = bloom;
+                    ctx.fillStyle = '#F4C430';
+                    ctx.shadowBlur = 2;
+                    ctx.shadowColor = 'rgba(244,196,48,0.4)';
                     ctx.beginPath();
-                    ctx.arc(px, py, pr * 0.38, 0, Math.PI * 2);
+                    ctx.arc(endX, endY, 1.8 * bloom, 0, Math.PI * 2);
                     ctx.fill();
                     ctx.restore();
                 }
 
-                // --- 草叶（无花的小草） ---
-                if (this.isGrass && g > 0.15) {
-                    const blades = 2 + Math.floor(Math.random() * 2);
-                    // Use deterministic seed based on position
-                    const seed = (this.x * 7919 + this.y * 6271) % 1000 / 1000;
-                    for (let i = 0; i < blades; i++) {
-                        const bt = 0.4 + (i / blades) * 0.6;
-                        const ba = a + (seed * 0.4 + i * 0.3 - 0.35);
-                        const bx = this.x + Math.sin(ba) * h * bt;
-                        const by = this.y - Math.cos(ba) * h * bt;
-
-                        ctx.save();
-                        ctx.globalAlpha = Math.min(1, (g - 0.15) / 0.5) * 0.7;
-                        ctx.strokeStyle = this.leafColor;
-                        ctx.lineWidth = 0.7;
+                // ---- 雏菊（类型 1） ----
+                if (pt === 1) {
+                    for (const p of this.petalData) {
+                        const pd = p.length * bloom;
+                        const pw = p.width * bloom;
+                        const pAlpha = bloom * 0.9;
+                        const px = endX + Math.cos(p.angle) * 1.5 * bloom;
+                        const py = endY + Math.sin(p.angle) * 1.5 * bloom;
+                        this._drawPetal(ctx, px, py, pd, pw, p.angle + Math.PI * 0.5,
+                            this.flowerHue + (p.hueShift || 0), this.flowerSat,
+                            this.flowerLight + (p.lightShift || 0), pAlpha);
+                    }
+                    // 花心
+                    ctx.save();
+                    ctx.globalAlpha = bloom;
+                    const dcGrad = ctx.createRadialGradient(endX, endY, 0, endX, endY, this.daisyCenterSize * bloom);
+                    dcGrad.addColorStop(0, '#FFE082');
+                    dcGrad.addColorStop(0.5, '#FFB300');
+                    dcGrad.addColorStop(1, '#E65100');
+                    ctx.fillStyle = dcGrad;
+                    ctx.beginPath();
+                    ctx.arc(endX, endY, this.daisyCenterSize * bloom, 0, Math.PI * 2);
+                    ctx.fill();
+                    // 花心纹理小点
+                    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+                    for (let i = 0; i < 5; i++) {
+                        const dotA = (i / 5) * Math.PI * 2 + 0.3;
+                        const dotR = this.daisyCenterSize * bloom * 0.45;
                         ctx.beginPath();
-                        ctx.moveTo(this.x + Math.sin(a) * h * (bt - 0.15), this.y - Math.cos(a) * h * (bt - 0.15));
-                        ctx.quadraticCurveTo(bx, by, bx + Math.sin(ba) * 5, by - Math.cos(ba) * 5);
-                        ctx.stroke();
+                        ctx.arc(endX + Math.cos(dotA) * dotR, endY + Math.sin(dotA) * dotR, 0.4 * bloom, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    ctx.restore();
+                }
+
+                // ---- 郁金香（类型 2） ----
+                if (pt === 2) {
+                    const th = this.tulipHeight * bloom;
+                    const tw = this.tulipWidth * bloom;
+                    for (const p of this.petalData) {
+                        const pAlpha = bloom * 0.92;
+                        ctx.save();
+                        ctx.globalAlpha = pAlpha;
+                        ctx.translate(endX, endY);
+                        ctx.rotate(p.angle);
+                        // 郁金香花瓣：从基部向上展开
+                        const grad = ctx.createLinearGradient(0, th * 0.3, 0, -th);
+                        grad.addColorStop(0, `hsla(${this.flowerHue}, ${this.flowerSat}%, ${this.flowerLight - 10}%, 0.95)`);
+                        grad.addColorStop(0.6, `hsla(${this.flowerHue + 5}, ${this.flowerSat}%, ${this.flowerLight + 5}%, 0.9)`);
+                        grad.addColorStop(1, `hsla(${this.flowerHue + 10}, ${this.flowerSat - 5}%, ${this.flowerLight + 15}%, 0.8)`);
+                        ctx.fillStyle = grad;
+                        ctx.beginPath();
+                        ctx.moveTo(0, 0);
+                        ctx.bezierCurveTo(tw * 0.6, -th * 0.3, tw, -th * 0.7, tw * 0.1, -th);
+                        ctx.bezierCurveTo(-0.2, -th * 0.8, -0.3, -th * 0.2, 0, 0);
+                        ctx.fill();
                         ctx.restore();
                     }
                 }
@@ -798,7 +1064,7 @@
         }
 
         // ============================================================
-        //  花草系统 — 管理所有植物
+        //  花草系统 — 管理所有植物 + 烘焙持久化
         // ============================================================
         class FloraSystem {
             constructor(canvas, ctx) {
@@ -809,6 +1075,8 @@
                     this.pool.push(new FloraElement());
                 }
                 this.nextSlot = 0;
+                /** 已完成生长的植物（序列化数据，用于 redraw/resize 重建） */
+                this.completed = [];
             }
 
             spawn(x, y, color) {
@@ -831,15 +1099,35 @@
                 }
             }
 
-            render() {
+            /** 将已完成生长的植物烘焙到永久画布，并移到 completed 列表 */
+            bakeCompleted(targetCtx) {
+                for (const f of this.pool) {
+                    if (f.alive && f.growth >= 1) {
+                        f.render(targetCtx, true); // forceFull=true: 以完整形态绘制
+                        this.completed.push(f);     // 保存引用用于 resize 重建
+                        f.alive = false;            // 从动画池移除
+                    }
+                }
+            }
+
+            /** 只渲染正在生长的植物到 flora-canvas */
+            renderGrowing() {
                 this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
                 for (const f of this.pool) {
-                    if (f.alive) f.render(this.ctx);
+                    if (f.alive) f.render(this.ctx, false);
+                }
+            }
+
+            /** 重绘所有已完成植物（用于 resize 后恢复） */
+            rebakeAll(targetCtx) {
+                for (const f of this.completed) {
+                    f.render(targetCtx, true);
                 }
             }
 
             clear() {
                 for (const f of this.pool) f.alive = false;
+                this.completed = [];
                 this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
             }
         }
@@ -1087,6 +1375,8 @@
                 sizeAndPos(particleCanvas, drawW, drawH);
 
                 this.drawingEngine.redrawAll();
+                // 重绘已烘焙的花草（它们不在 strokes 数组里）
+                this.floraSystem.rebakeAll(drawingCtx);
                 this.drawSize = { w: drawW, h: drawH, offsetX, offsetY };
             }
 
@@ -1169,9 +1459,10 @@
 
                 // 更新粒子（始终运行，粒子自己会衰减）
                 this.particleSystem.update();
-                // 更新花草（始终运行，花草自己会生长完成）
+                // 更新花草：先烘焙已完成植物到永久画布，再渲染生长中的
                 this.floraSystem.update(rawDt);
-                this.floraSystem.render();
+                this.floraSystem.bakeCompleted(drawingCtx);
+                this.floraSystem.renderGrowing();
             }
 
             /** 处理 MediaPipe 检测结果（仅在视频帧变化时调用） */
@@ -1274,7 +1565,7 @@
 
                     case 'undo':
                         if (!this.gestureTriggered.undo) {
-                            de.undoLastStroke();
+                            this.undoLastStroke();
                             this.gestureTriggered.undo = true;
                         }
                         this.isDrawing = false;
@@ -1293,6 +1584,12 @@
                         this.updateUI('idle', '伸出食指开始绘画 ☝️');
                         break;
                 }
+            }
+
+            /** 撤销：先撤销笔画，再恢复烘焙花草（它们不在 strokes 里） */
+            undoLastStroke() {
+                this.drawingEngine.undoLastStroke();
+                this.floraSystem.rebakeAll(drawingCtx);
             }
 
             onHandLost() {
@@ -1347,7 +1644,7 @@
         });
 
         document.getElementById('undo-btn').addEventListener('click', () => {
-            app.drawingEngine.undoLastStroke();
+            app.undoLastStroke();
             app.updateUI('undo', '撤销一笔 ↩');
         });
 
@@ -1393,7 +1690,7 @@
                     app.updateUI('clear', '画布已清除 🧹 [快捷键]');
                     break;
                 case 'z':
-                    app.drawingEngine.undoLastStroke();
+                    app.undoLastStroke();
                     app.updateUI('undo', '撤销一笔 ↩ [快捷键]');
                     break;
                 case 's':
