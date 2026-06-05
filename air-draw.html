@@ -36,7 +36,6 @@
         #camera-video {
             position: absolute;
             visibility: hidden;
-            /* 保持视频用于检测，但不显示 */
         }
 
         /* ========== 摄像头画面展示层 ========== */
@@ -44,12 +43,11 @@
             position: absolute;
             display: block;
             pointer-events: none;
-            /* 镜像翻转（前置摄像头） */
             transform: scaleX(-1);
             object-fit: contain;
         }
 
-        /* ========== 绘图 Canvas（CSS 镜像翻转，与视频展示一致） ========== */
+        /* ========== 绘图 Canvas ========== */
         #drawing-canvas {
             position: absolute;
             pointer-events: none;
@@ -57,7 +55,15 @@
             transform: scaleX(-1);
         }
 
-        /* ========== 粒子 Canvas（CSS 镜像翻转） ========== */
+        /* ========== 花草 Canvas（持久动画层） ========== */
+        #flora-canvas {
+            position: absolute;
+            pointer-events: none;
+            z-index: 12;
+            transform: scaleX(-1);
+        }
+
+        /* ========== 粒子 Canvas ========== */
         #particle-canvas {
             position: absolute;
             pointer-events: none;
@@ -124,6 +130,23 @@
             vertical-align: middle;
             margin-right: 4px;
             border: 1px solid rgba(255,255,255,0.4);
+        }
+        #status-badge .flora-indicator {
+            display: inline-block;
+            padding: 1px 8px;
+            border-radius: 10px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            vertical-align: middle;
+            margin-left: 4px;
+        }
+        #status-badge .flora-on {
+            background: rgba(76,175,80,0.3);
+            color: #81c784;
+        }
+        #status-badge .flora-off {
+            background: rgba(255,255,255,0.1);
+            color: #999;
         }
 
         /* ========== 控制面板（右上角） ========== */
@@ -255,32 +278,25 @@
     <!-- ========== 主容器 ========== -->
     <div id="app-container">
 
-        <!-- 隐藏的 video 元素，仅用于 MediaPipe 检测 -->
         <video id="camera-video" playsinline autoplay muted></video>
-
-        <!-- 摄像头画面展示 -->
         <canvas id="video-display"></canvas>
-
-        <!-- 绘图 Canvas（持久笔画） -->
         <canvas id="drawing-canvas"></canvas>
-
-        <!-- 粒子 Canvas（每帧清空） -->
+        <canvas id="flora-canvas"></canvas>
         <canvas id="particle-canvas"></canvas>
 
-        <!-- 加载遮罩 -->
         <div id="loading-overlay">
             <div class="spinner"></div>
             <div id="loading-text">正在加载手势识别模型…</div>
         </div>
 
-        <!-- 状态角标 -->
         <div id="status-badge">
             <div class="gesture-name" id="gesture-label">等待启动</div>
-            <div><span class="color-dot" id="color-dot"></span> <span id="color-label">—</span></div>
+            <div><span class="color-dot" id="color-dot"></span> <span id="color-label">—</span>
+                <span class="flora-indicator flora-off" id="flora-indicator">🌿 普通</span>
+            </div>
             <div id="fps-label">FPS: --</div>
         </div>
 
-        <!-- 控制面板 -->
         <div id="control-panel">
             <label for="color-picker">🎨 画笔颜色</label>
             <input type="color" id="color-picker" value="#ff0000">
@@ -290,24 +306,21 @@
             <button id="camera-btn">📷 启动摄像头</button>
         </div>
 
-        <!-- 手势提示卡 -->
         <div id="gesture-hints">
             <span data-gesture="draw">☝️ 绘画</span>
             <span data-gesture="lift">🤏 抬笔</span>
-            <span data-gesture="clear">👌 清屏</span>
+            <span data-gesture="flora">👌 花草</span>
             <span data-gesture="undo">✊ 撤销</span>
             <span data-gesture="cycle">🖐️ 换色</span>
         </div>
     </div>
 
-    <!-- ========== 主脚本（ES Module，支持 CDN import） ========== -->
     <script type="module">
         // ============================================================
         //  Air Draw — 手势隔空作画互动网页
-        //  基于 MediaPipe HandLandmarker 实现实时手势识别并绘图
+        //  基于 MediaPipe HandLandmarker + 粒子拖尾 + 花草生长特效
         // ============================================================
 
-        // ---------- 从 CDN 加载 MediaPipe Tasks Vision ----------
         import {
             FilesetResolver,
             HandLandmarker
@@ -317,24 +330,38 @@
         //  配置常量
         // ============================================================
         const CONFIG = {
-            // 颜色循环列表
             colors: ['#FF0000', '#00FF00', '#0000FF', '#800080', '#FFA500'],
-            // 笔画（速度模拟压感：快→细，慢→粗）
             baseStrokeWidth: 5,
             minStrokeWidth: 1.5,
             maxStrokeWidth: 14,
-            speedFactor: 1.0, // 压感灵敏度（越大越快变细）
-            maxSpeed: 3.0, // 速度上限 px/ms，超过此值统一按最细处理
-            // 手势防抖帧数（降低以提高响应速度）
-            debounceFrames: 2,
-            // 捏合距离阈值（归一化坐标）
+            speedFactor: 0.8,
+            maxSpeed: 3.0,
+            debounceFrames: 1,
             pinchThreshold: 0.06,
-            // 粒子
             maxParticles: 800,
-            particleDensity: 1.6, // 每像素间距（越小粒子越密集）
-            // 摄像头分辨率
+            particleDensity: 1.6,
             cameraWidth: { ideal: 1920 },
             cameraHeight: { ideal: 1080 },
+        };
+
+        const FLORA_CONFIG = {
+            maxElements: 350,
+            spawnDensity: 10,
+            stemMin: 10,
+            stemMax: 45,
+            flowerChance: 0.55,
+            petalCountMin: 4,
+            petalCountMax: 8,
+            petalSizeMin: 2.0,
+            petalSizeMax: 5.5,
+            leafCountMin: 1,
+            leafCountMax: 3,
+            grassChance: 0.35,
+            leafColors: [
+                '#228B22','#2E8B57','#3CB371','#66CDAA','#90EE90',
+                '#00FA9A','#00FF7F','#7CFC00','#32CD32','#556B2F',
+                '#8FBC8F','#20B2AA','#48C9B0','#27AE60','#1E8449',
+            ],
         };
 
         // ============================================================
@@ -346,6 +373,8 @@
         const videoDisplayCtx = videoDisplay.getContext('2d');
         const drawingCanvas = document.getElementById('drawing-canvas');
         const drawingCtx = drawingCanvas.getContext('2d');
+        const floraCanvas = document.getElementById('flora-canvas');
+        const floraCtx = floraCanvas.getContext('2d');
         const particleCanvas = document.getElementById('particle-canvas');
         const particleCtx = particleCanvas.getContext('2d');
         const loadingOverlay = document.getElementById('loading-overlay');
@@ -353,53 +382,29 @@
         const gestureLabel = document.getElementById('gesture-label');
         const colorDot = document.getElementById('color-dot');
         const colorLabel = document.getElementById('color-label');
+        const floraIndicator = document.getElementById('flora-indicator');
         const fpsLabel = document.getElementById('fps-label');
         const colorPicker = document.getElementById('color-picker');
         const gestureHintSpans = document.querySelectorAll('#gesture-hints span');
 
         // ============================================================
-        //  手势分类器（纯函数，无状态）
-        //  输入：21 个归一化关键点数组 [{x,y,z}, ...]
-        //  输出：{ gesture: 'draw'|'lift'|'clear'|'cycle'|'undo'|'idle',
-        //          pointer: {x,y}|null }
+        //  手势分类器
         // ============================================================
         const GestureClassifier = (() => {
-            // MediaPipe 手部关键点索引
             const L = {
-                WRIST: 0,
-                THUMB_CMC: 1,
-                THUMB_MCP: 2,
-                THUMB_IP: 3,
-                THUMB_TIP: 4,
-                INDEX_MCP: 5,
-                INDEX_PIP: 6,
-                INDEX_DIP: 7,
-                INDEX_TIP: 8,
-                MIDDLE_MCP: 9,
-                MIDDLE_PIP: 10,
-                MIDDLE_DIP: 11,
-                MIDDLE_TIP: 12,
-                RING_MCP: 13,
-                RING_PIP: 14,
-                RING_DIP: 15,
-                RING_TIP: 16,
-                PINKY_MCP: 17,
-                PINKY_PIP: 18,
-                PINKY_DIP: 19,
-                PINKY_TIP: 20,
+                WRIST: 0, THUMB_CMC: 1, THUMB_MCP: 2, THUMB_IP: 3, THUMB_TIP: 4,
+                INDEX_MCP: 5, INDEX_PIP: 6, INDEX_DIP: 7, INDEX_TIP: 8,
+                MIDDLE_MCP: 9, MIDDLE_PIP: 10, MIDDLE_DIP: 11, MIDDLE_TIP: 12,
+                RING_MCP: 13, RING_PIP: 14, RING_DIP: 15, RING_TIP: 16,
+                PINKY_MCP: 17, PINKY_PIP: 18, PINKY_DIP: 19, PINKY_TIP: 20,
             };
 
-            /** 两点欧氏距离 */
             function dist(a, b) {
                 const dx = a.x - b.x;
                 const dy = a.y - b.y;
                 return Math.sqrt(dx * dx + dy * dy);
             }
 
-            /**
-             * 判断一根手指是否伸直（适用于食指/中指/无名指/小指）
-             * 原理：在图像坐标系中，y 轴向下。指尖伸直时 tip.y < pip.y < mcp.y
-             */
             function isFingerExtended(landmarks, tipIdx, pipIdx, mcpIdx) {
                 const tip = landmarks[tipIdx];
                 const pip = landmarks[pipIdx];
@@ -407,99 +412,75 @@
                 return tip.y < pip.y && tip.y < mcp.y;
             }
 
-            /**
-             * 判断一根手指是否明显卷曲（用于握拳检测）
-             * 卷曲时指尖折叠到 PIP 关节下方：tip.y > pip.y
-             */
             function isFingerCurled(landmarks, tipIdx, pipIdx) {
-                const tip = landmarks[tipIdx];
-                const pip = landmarks[pipIdx];
-                return tip.y > pip.y;
+                return landmarks[tipIdx].y > landmarks[pipIdx].y;
             }
 
-            /**
-             * 判断拇指是否伸直
-             * 拇指运动方向偏向水平，不能简单用 y 坐标判断。
-             * 改用距离法：拇指尖到食指 MCP 的距离 > 拇指 IP 到食指 MCP 的距离 × 1.3
-             */
             function isThumbExtended(landmarks) {
-                const thumbTip = landmarks[L.THUMB_TIP];
-                const thumbIp = landmarks[L.THUMB_IP];
-                const indexMcp = landmarks[L.INDEX_MCP];
-                const tipDist = dist(thumbTip, indexMcp);
-                const ipDist = dist(thumbIp, indexMcp);
+                const tipDist = dist(landmarks[L.THUMB_TIP], landmarks[L.INDEX_MCP]);
+                const ipDist = dist(landmarks[L.THUMB_IP], landmarks[L.INDEX_MCP]);
                 return tipDist > ipDist * 1.3;
             }
 
             /**
-             * 主分类函数
-             * 优先级：OK → 五指 → 捏合 → 握拳 → 食指 → 无手势
+             * 优先级：OK（花草开关）→ 五指 → 捏合 → 握拳 → 食指 → 无手势
              */
             function classify(landmarks) {
                 if (!landmarks || landmarks.length < 21) {
                     return { gesture: 'idle', pointer: null };
                 }
 
-                // 各手指伸直状态
                 const indexUp = isFingerExtended(landmarks, L.INDEX_TIP, L.INDEX_PIP, L.INDEX_MCP);
                 const middleUp = isFingerExtended(landmarks, L.MIDDLE_TIP, L.MIDDLE_PIP, L.MIDDLE_MCP);
                 const ringUp = isFingerExtended(landmarks, L.RING_TIP, L.RING_PIP, L.RING_MCP);
                 const pinkyUp = isFingerExtended(landmarks, L.PINKY_TIP, L.PINKY_PIP, L.PINKY_MCP);
                 const thumbUp = isThumbExtended(landmarks);
 
-                // 各手指卷曲状态（正向检测握拳）
                 const indexCurled = isFingerCurled(landmarks, L.INDEX_TIP, L.INDEX_PIP);
                 const middleCurled = isFingerCurled(landmarks, L.MIDDLE_TIP, L.MIDDLE_PIP);
                 const ringCurled = isFingerCurled(landmarks, L.RING_TIP, L.RING_PIP);
                 const pinkyCurled = isFingerCurled(landmarks, L.PINKY_TIP, L.PINKY_PIP);
-                // 拇指卷曲：拇指尖贴近食指 MCP（距离 < 0.09 归一化单位）
                 const thumbToIndexMcp = dist(landmarks[L.THUMB_TIP], landmarks[L.INDEX_MCP]);
                 const thumbCurled = thumbToIndexMcp < 0.09;
 
-                // 判断捏合（拇指尖与食指尖距离很小）
                 const pinchDist = dist(landmarks[L.THUMB_TIP], landmarks[L.INDEX_TIP]);
                 const isPinching = pinchDist < CONFIG.pinchThreshold;
 
-                // 食指指尖坐标（归一化 0-1）
                 const pointer = {
                     x: landmarks[L.INDEX_TIP].x,
                     y: landmarks[L.INDEX_TIP].y,
                 };
 
-                // ---- 按优先级分类 ----
-
-                // 1. OK 手势：捏合 + 中/无/小三指伸直
+                // 1. OK 手势 → 切换花草模式（不再清屏）
                 if (isPinching && middleUp && ringUp && pinkyUp) {
-                    return { gesture: 'clear', pointer };
+                    return { gesture: 'flora', pointer };
                 }
 
-                // 2. 五指张开：所有手指伸直
+                // 2. 五指张开 → 换色
                 if (thumbUp && indexUp && middleUp && ringUp && pinkyUp) {
                     return { gesture: 'cycle', pointer };
                 }
 
-                // 3. 捏合：拇指+食指靠近，其余手指收拢
+                // 3. 捏合 → 抬笔
                 if (isPinching && !middleUp && !ringUp && !pinkyUp) {
                     return { gesture: 'lift', pointer };
                 }
-                // 也匹配"仅捏合"的情况（其余手指可能部分伸直，但不是全部）
                 if (isPinching) {
                     return { gesture: 'lift', pointer };
                 }
 
-                // 4. 握拳：所有手指明显卷曲（正向检测，更准确）
+                // 4. 握拳 → 撤销
                 const allCurled = indexCurled && middleCurled && ringCurled && pinkyCurled;
                 const noneExtended = !indexUp && !middleUp && !ringUp && !pinkyUp;
                 if (allCurled && noneExtended && (thumbCurled || !thumbUp)) {
                     return { gesture: 'undo', pointer };
                 }
 
-                // 5. 仅食指伸出：其他手指收拢
+                // 5. 仅食指伸出 → 绘画
                 if (indexUp && !middleUp && !ringUp && !pinkyUp) {
                     return { gesture: 'draw', pointer };
                 }
 
-                // 6. 未识别
                 return { gesture: 'idle', pointer };
             }
 
@@ -508,7 +489,6 @@
 
         // ============================================================
         //  笔划类
-        //  存储一笔连续线条的所有点
         // ============================================================
         class Stroke {
             constructor(color, baseWidth) {
@@ -521,73 +501,57 @@
 
         // ============================================================
         //  绘图引擎
-        //  管理所有笔划、渲染到 drawing-canvas
         // ============================================================
         class DrawingEngine {
             constructor(canvas, ctx) {
                 this.canvas = canvas;
                 this.ctx = ctx;
-                /** @type {Stroke[]} 已完成的笔划 */
                 this.strokes = [];
-                /** @type {Stroke|null} 当前正在绘制的笔划 */
                 this.currentStroke = null;
-                /** 当前颜色索引（用于手势循环切换） */
                 this.currentColorIdx = 0;
-                /** 手动选色（优先级高于循环颜色） */
                 this.manualColor = null;
-
-                // 初始化画布渲染设置
                 this.ctx.lineCap = 'round';
                 this.ctx.lineJoin = 'round';
             }
 
-            /** 获取当前实际使用的颜色 */
             get currentColor() {
                 return this.manualColor || CONFIG.colors[this.currentColorIdx];
             }
 
-            /** 添加一个点（在主循环中调用） */
             addPoint(x, y, speed) {
                 if (!this.currentStroke) {
                     this.currentStroke = new Stroke(this.currentColor, CONFIG.baseStrokeWidth);
                 }
-
-                // 速度 → 粗细映射：越快越细
                 const width = this.calcWidth(speed);
                 this.currentStroke.points.push({ x, y, width });
-
-                // 渲染最近一个线段
                 this.renderLastSegment();
             }
 
-            /** 速度 → 笔触宽度（反比关系：越快越细） */
             calcWidth(speed) {
-                const clampedSpeed = Math.max(0, Math.min(speed, CONFIG.maxSpeed));
+                const cs = Math.max(0, Math.min(speed, CONFIG.maxSpeed));
                 return Math.max(
                     CONFIG.minStrokeWidth,
                     Math.min(CONFIG.maxStrokeWidth,
-                        CONFIG.baseStrokeWidth / (1 + clampedSpeed * CONFIG.speedFactor)
+                        CONFIG.baseStrokeWidth / (1 + cs * CONFIG.speedFactor)
                     )
                 );
             }
 
-            /** 渲染当前笔划的最后一个线段（高效增量渲染） */
             renderLastSegment() {
                 const pts = this.currentStroke.points;
                 if (pts.length < 2) return;
-
                 const p0 = pts[pts.length - 2];
                 const p1 = pts[pts.length - 1];
-
                 this.ctx.strokeStyle = this.currentStroke.color;
                 this.ctx.lineWidth = p1.width;
+                this.ctx.globalAlpha = 0.92;
                 this.ctx.beginPath();
                 this.ctx.moveTo(p0.x, p0.y);
                 this.ctx.lineTo(p1.x, p1.y);
                 this.ctx.stroke();
+                this.ctx.globalAlpha = 1;
             }
 
-            /** 结束当前笔划，存入已完成列表 */
             endStroke() {
                 if (this.currentStroke && this.currentStroke.points.length > 1) {
                     this.strokes.push(this.currentStroke);
@@ -595,50 +559,38 @@
                 this.currentStroke = null;
             }
 
-            /** 撤销最后一笔 */
             undoLastStroke() {
-                // 先结束当前笔划
                 this.currentStroke = null;
-                // 弹出最后一笔已完成的笔划
-                if (this.strokes.length > 0) {
-                    this.strokes.pop();
-                }
-                // 完全重绘
+                if (this.strokes.length > 0) this.strokes.pop();
                 this.redrawAll();
             }
 
-            /** 清空所有内容 */
             clearAll() {
                 this.currentStroke = null;
                 this.strokes = [];
                 this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
             }
 
-            /** 循环切换颜色 */
             cycleColor() {
                 this.currentColorIdx = (this.currentColorIdx + 1) % CONFIG.colors.length;
-                this.manualColor = null; // 手势换色时清除手动选色
-                this.endStroke(); // 切换颜色时自动开始新的一笔
+                this.manualColor = null;
+                this.endStroke();
             }
 
-            /** 设置手动颜色 */
             setManualColor(hex) {
                 this.manualColor = hex;
-                this.endStroke(); // 换色时开始新的一笔
+                this.endStroke();
             }
 
-            /** 完全重绘所有已完成的笔划 */
             redrawAll() {
                 this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-
                 for (const stroke of this.strokes) {
                     const pts = stroke.points;
                     if (pts.length < 2) continue;
-
                     this.ctx.strokeStyle = stroke.color;
                     this.ctx.lineCap = 'round';
                     this.ctx.lineJoin = 'round';
-
+                    this.ctx.globalAlpha = 0.92;
                     for (let i = 1; i < pts.length; i++) {
                         this.ctx.lineWidth = pts[i].width;
                         this.ctx.beginPath();
@@ -646,29 +598,24 @@
                         this.ctx.lineTo(pts[i].x, pts[i].y);
                         this.ctx.stroke();
                     }
+                    this.ctx.globalAlpha = 1;
                 }
             }
 
-            /** 将画布导出为 PNG DataURL */
             exportImage(bgColor = '#0d0d0d') {
-                // 创建临时画布，加上深色背景
                 const tempCanvas = document.createElement('canvas');
                 tempCanvas.width = this.canvas.width;
                 tempCanvas.height = this.canvas.height;
                 const tempCtx = tempCanvas.getContext('2d');
-
-                // 背景
                 tempCtx.fillStyle = bgColor;
                 tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-                // 绘制笔划
                 tempCtx.drawImage(this.canvas, 0, 0);
-
                 return tempCanvas.toDataURL('image/png');
             }
         }
 
         // ============================================================
-        //  颜色工具：Hex → HSL（用于粒子色彩变化）
+        //  颜色工具：Hex → HSL
         // ============================================================
         function hexToHsl(hex) {
             hex = hex.replace(/^#/, '');
@@ -690,84 +637,267 @@
         }
 
         // ============================================================
-        //  粒子系统
-        //  管理粒子的生成、更新与渲染
+        //  花草元素 — 单株植物
         // ============================================================
-        class Particle {
+        class FloraElement {
             constructor() {
                 this.alive = false;
-                this.x = 0;
-                this.y = 0;
-                this.vx = 0;
-                this.vy = 0;
-                this.life = 0;
-                this.decay = 0;
-                this.size = 0;
-                /** HSL 颜色分量 */
-                this.hue = 0;
-                this.saturation = 0;
-                this.lightness = 0;
-                /** 每个粒子独立的色相旋转速度 */
-                this.hueSpin = 0;
+                this.leaves = [];
+                this.petalAngles = [];
             }
 
-            /** 重置粒子状态 */
-            reset(x, y, color) {
+            reset(x, y, strokeColor) {
                 this.alive = true;
                 this.x = x;
                 this.y = y;
-                // 更柔和的随机速度，粒子飘散更细腻
-                this.vx = (Math.random() - 0.5) * 3.5;
-                this.vy = (Math.random() - 0.5) * 3.0 - 1.5;
-                this.life = 1.0;
-                this.decay = 0.012 + Math.random() * 0.035;
-                // 🎨 小颗粒子，精致细腻
-                this.size = 0.8 + Math.random() * 2.8;
-                // 🎨 相近色搭配：以笔触颜色色相为基准，±35° 范围内变化
-                //     红→橙红、蓝→紫蓝、绿→黄绿、紫→粉紫 … 和谐不刺眼
-                const baseHsl = hexToHsl(color);
-                this.hue = (baseHsl.h + (Math.random() - 0.5) * 70 + 360) % 360;
-                // 饱和度保持柔和（不过饱和）
-                this.saturation = 60 + Math.random() * 35;
-                // 亮度中等偏高，粒子晶莹透亮
-                this.lightness = 50 + Math.random() * 35;
-                // 缓慢的色相微调（相近色范围内轻柔摆动）
-                this.hueSpin = 0.8 + Math.random() * 3.0;
+                this.growth = 0;
+                // 生长速度：1.8~4 秒长满（60fps: 0.005~0.012 per frame）
+                this.growthSpeed = 0.005 + Math.random() * 0.012;
+                this.stemHeight = FLORA_CONFIG.stemMin + Math.random() * (FLORA_CONFIG.stemMax - FLORA_CONFIG.stemMin);
+                this.stemAngle = (Math.random() - 0.5) * 0.6;
+                this.stemCurve = (Math.random() - 0.5) * 0.4;
+
+                const hsl = hexToHsl(strokeColor);
+                this.hasFlower = Math.random() < FLORA_CONFIG.flowerChance;
+                this.flowerHue = (hsl.h + (Math.random() - 0.5) * 50 + 360) % 360;
+                this.flowerSat = 55 + Math.random() * 35;
+                this.flowerLight = 48 + Math.random() * 35;
+                this.petalCount = FLORA_CONFIG.petalCountMin + Math.floor(Math.random() * (FLORA_CONFIG.petalCountMax - FLORA_CONFIG.petalCountMin + 1));
+                this.petalRadius = FLORA_CONFIG.petalSizeMin + Math.random() * (FLORA_CONFIG.petalSizeMax - FLORA_CONFIG.petalSizeMin);
+
+                const lc = FLORA_CONFIG.leafColors;
+                this.leafColor = lc[Math.floor(Math.random() * lc.length)];
+
+                this.leafCount = FLORA_CONFIG.leafCountMin + Math.floor(Math.random() * (FLORA_CONFIG.leafCountMax - FLORA_CONFIG.leafCountMin + 1));
+                this.leaves = [];
+                for (let i = 0; i < this.leafCount; i++) {
+                    this.leaves.push({
+                        t: 0.25 + (i / (this.leafCount + 1)) * 0.55,
+                        angle: this.stemAngle + (i % 2 === 0 ? 1 : -1) * (0.45 + Math.random() * 0.45),
+                        size: 2.5 + Math.random() * 5.5,
+                    });
+                }
+
+                this.petalAngles = [];
+                const baseOffset = Math.random() * Math.PI * 2;
+                for (let i = 0; i < this.petalCount; i++) {
+                    this.petalAngles.push(baseOffset + (i / this.petalCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.35);
+                }
+
+                this.isGrass = !this.hasFlower && Math.random() < FLORA_CONFIG.grassChance;
             }
 
-            /** 更新位置与生命值 */
-            update() {
+            update(dt) {
                 if (!this.alive) return;
-                this.x += this.vx;
-                this.y += this.vy;
-                this.vy += 0.012; // 更轻的重力
-                this.life -= this.decay;
-                this.size *= 0.998;
-                // 色相在相近色范围内轻柔旋转
-                this.hue = (this.hue + this.hueSpin) % 360;
-                // 亮度缓慢升高 → 粒子消失前微微发亮
-                this.lightness += 0.2;
-                if (this.life <= 0) {
-                    this.alive = false;
+                this.growth += this.growthSpeed;
+                if (this.growth >= 1) {
+                    this.growth = 1;
+                }
+            }
+
+            render(ctx) {
+                if (!this.alive || this.growth <= 0.01) return;
+
+                const g = this.growth;
+                // easeOutCubic
+                const ease = 1 - Math.pow(1 - g, 3);
+                const h = this.stemHeight * ease;
+                const a = this.stemAngle;
+                const endX = this.x + Math.sin(a) * h;
+                const endY = this.y - Math.cos(a) * h;
+                const cpX = this.x + Math.sin(a + this.stemCurve) * h * 0.55;
+                const cpY = this.y - Math.cos(a + this.stemCurve) * h * 0.55;
+
+                // --- 茎 ---
+                ctx.save();
+                ctx.strokeStyle = this.leafColor;
+                ctx.lineWidth = Math.max(0.6, 1.6 * (1 - g * 0.25));
+                ctx.lineCap = 'round';
+                ctx.globalAlpha = Math.min(1, g * 2);
+                ctx.beginPath();
+                ctx.moveTo(this.x, this.y);
+                ctx.quadraticCurveTo(cpX, cpY, endX, endY);
+                ctx.stroke();
+                ctx.restore();
+
+                // --- 叶子 ---
+                if (g > 0.2) {
+                    const leafAlpha = Math.min(1, (g - 0.2) / 0.6);
+                    for (const leaf of this.leaves) {
+                        const lt = leaf.t;
+                        const lx = this.x + Math.sin(a + this.stemCurve * lt * 2) * h * lt;
+                        const ly = this.y - Math.cos(a + this.stemCurve * lt * 2) * h * lt;
+                        const ls = leaf.size * ease;
+
+                        ctx.save();
+                        ctx.globalAlpha = leafAlpha * 0.85;
+                        ctx.fillStyle = this.leafColor;
+                        ctx.beginPath();
+                        ctx.ellipse(lx, ly, ls, ls * 0.3, leaf.angle, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.restore();
+                    }
+                }
+
+                // --- 花朵 ---
+                if (this.hasFlower && g > 0.65) {
+                    const bloom = Math.min(1, (g - 0.65) / 0.35);
+                    const bloomEase = 1 - Math.pow(1 - bloom, 2);
+                    const pr = this.petalRadius * bloomEase;
+                    const px = endX;
+                    const py = endY;
+
+                    // 花瓣
+                    for (const pa of this.petalAngles) {
+                        const petalX = px + Math.cos(pa) * pr;
+                        const petalY = py + Math.sin(pa) * pr;
+                        ctx.save();
+                        ctx.globalAlpha = bloomEase * 0.9;
+                        ctx.fillStyle = `hsl(${this.flowerHue}, ${this.flowerSat}%, ${this.flowerLight}%)`;
+                        ctx.beginPath();
+                        ctx.arc(petalX, petalY, pr * 0.65, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.restore();
+                    }
+
+                    // 花心
+                    ctx.save();
+                    ctx.globalAlpha = bloomEase;
+                    ctx.fillStyle = '#FFE066';
+                    ctx.shadowBlur = 3;
+                    ctx.shadowColor = 'rgba(255,224,102,0.5)';
+                    ctx.beginPath();
+                    ctx.arc(px, py, pr * 0.38, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                }
+
+                // --- 草叶（无花的小草） ---
+                if (this.isGrass && g > 0.15) {
+                    const blades = 2 + Math.floor(Math.random() * 2);
+                    // Use deterministic seed based on position
+                    const seed = (this.x * 7919 + this.y * 6271) % 1000 / 1000;
+                    for (let i = 0; i < blades; i++) {
+                        const bt = 0.4 + (i / blades) * 0.6;
+                        const ba = a + (seed * 0.4 + i * 0.3 - 0.35);
+                        const bx = this.x + Math.sin(ba) * h * bt;
+                        const by = this.y - Math.cos(ba) * h * bt;
+
+                        ctx.save();
+                        ctx.globalAlpha = Math.min(1, (g - 0.15) / 0.5) * 0.7;
+                        ctx.strokeStyle = this.leafColor;
+                        ctx.lineWidth = 0.7;
+                        ctx.beginPath();
+                        ctx.moveTo(this.x + Math.sin(a) * h * (bt - 0.15), this.y - Math.cos(a) * h * (bt - 0.15));
+                        ctx.quadraticCurveTo(bx, by, bx + Math.sin(ba) * 5, by - Math.cos(ba) * 5);
+                        ctx.stroke();
+                        ctx.restore();
+                    }
                 }
             }
         }
 
-        class ParticleSystem {
-            constructor(canvas, ctx, maxParticles = CONFIG.maxParticles) {
+        // ============================================================
+        //  花草系统 — 管理所有植物
+        // ============================================================
+        class FloraSystem {
+            constructor(canvas, ctx) {
                 this.canvas = canvas;
                 this.ctx = ctx;
-                /** 粒子对象池（预分配，避免 GC） */
                 this.pool = [];
-                for (let i = 0; i < maxParticles; i++) {
+                for (let i = 0; i < FLORA_CONFIG.maxElements; i++) {
+                    this.pool.push(new FloraElement());
+                }
+                this.nextSlot = 0;
+            }
+
+            spawn(x, y, color) {
+                this.pool[this.nextSlot].reset(x, y, color);
+                this.nextSlot = (this.nextSlot + 1) % this.pool.length;
+            }
+
+            spawnAlongSegment(x0, y0, x1, y1, color, density = FLORA_CONFIG.spawnDensity) {
+                const d = Math.hypot(x1 - x0, y1 - y0);
+                const steps = Math.max(1, Math.floor(d / density));
+                for (let i = 0; i <= steps; i++) {
+                    const t = i / steps;
+                    this.spawn(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, color);
+                }
+            }
+
+            update(dt) {
+                for (const f of this.pool) {
+                    if (f.alive) f.update(dt);
+                }
+            }
+
+            render() {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                for (const f of this.pool) {
+                    if (f.alive) f.render(this.ctx);
+                }
+            }
+
+            clear() {
+                for (const f of this.pool) f.alive = false;
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+            }
+        }
+
+        // ============================================================
+        //  粒子系统
+        // ============================================================
+        class Particle {
+            constructor() {
+                this.alive = false;
+                this.x = 0; this.y = 0;
+                this.vx = 0; this.vy = 0;
+                this.life = 0; this.decay = 0;
+                this.size = 0;
+                this.hue = 0; this.saturation = 0; this.lightness = 0;
+                this.hueSpin = 0;
+            }
+
+            reset(x, y, color) {
+                this.alive = true;
+                this.x = x; this.y = y;
+                this.vx = (Math.random() - 0.5) * 3.5;
+                this.vy = (Math.random() - 0.5) * 3.0 - 1.5;
+                this.life = 1.0;
+                this.decay = 0.012 + Math.random() * 0.035;
+                this.size = 0.8 + Math.random() * 2.8;
+                const baseHsl = hexToHsl(color);
+                this.hue = (baseHsl.h + (Math.random() - 0.5) * 70 + 360) % 360;
+                this.saturation = 60 + Math.random() * 35;
+                this.lightness = 50 + Math.random() * 35;
+                this.hueSpin = 0.8 + Math.random() * 3.0;
+            }
+
+            update() {
+                if (!this.alive) return;
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.012;
+                this.life -= this.decay;
+                this.size *= 0.998;
+                this.hue = (this.hue + this.hueSpin) % 360;
+                this.lightness += 0.2;
+                if (this.life <= 0) this.alive = false;
+            }
+        }
+
+        class ParticleSystem {
+            constructor(canvas, ctx) {
+                this.canvas = canvas;
+                this.ctx = ctx;
+                this.pool = [];
+                for (let i = 0; i < CONFIG.maxParticles; i++) {
                     this.pool.push(new Particle());
                 }
                 this.nextSlot = 0;
-                /** 全局色相偏移，随时间缓慢旋转，让整条拖尾的颜色不断流动 */
                 this.globalHueShift = 0;
             }
 
-            /** 在 (x, y) 生成 count 个粒子 */
             spawn(x, y, color, count = 2) {
                 for (let i = 0; i < count; i++) {
                     this.pool[this.nextSlot].reset(x, y, color);
@@ -775,34 +905,27 @@
                 }
             }
 
-            /**
-             * 沿线段 (x0,y0)→(x1,y1) 均匀生成粒子
-             * density 控制间距（像素），值越小粒子越密
-             */
             spawnAlongSegment(x0, y0, x1, y1, color, density = CONFIG.particleDensity) {
                 const d = Math.hypot(x1 - x0, y1 - y0);
                 const steps = Math.max(1, Math.floor(d / density));
                 for (let i = 0; i <= steps; i++) {
                     const t = i / steps;
-                    const x = x0 + (x1 - x0) * t;
-                    const y = y0 + (y1 - y0) * t;
-                    this.spawn(x, y, color, 1);
+                    this.spawn(
+                        x0 + (x1 - x0) * t,
+                        y0 + (y1 - y0) * t,
+                        color, 1
+                    );
                 }
             }
 
-            /** 更新并渲染所有粒子（每帧调用，细腻辉光 + 相近色循环） */
             update() {
                 this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-                // 全局色相缓慢推进 → 相近色范围内轻柔流动
                 this.globalHueShift = (this.globalHueShift + 0.35) % 360;
-                // 柔和辉光（小粒子配小光晕，更精致）
                 this.ctx.shadowBlur = 4;
                 for (const p of this.pool) {
                     if (!p.alive) continue;
                     p.update();
                     if (!p.alive) continue;
-
-                    // 粒子自身色相 + 全局偏移 → 双重旋转，色彩不断交替
                     const displayHue = (p.hue + this.globalHueShift) % 360;
                     const colorStr = `hsl(${displayHue}, ${p.saturation}%, ${p.lightness}%)`;
                     this.ctx.globalAlpha = p.life;
@@ -816,7 +939,6 @@
                 this.ctx.shadowBlur = 0;
             }
 
-            /** 清除所有粒子 */
             clear() {
                 for (const p of this.pool) p.alive = false;
                 this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -828,31 +950,43 @@
         // ============================================================
         class AppController {
             constructor() {
-                // 初始化各模块
                 this.drawingEngine = new DrawingEngine(drawingCanvas, drawingCtx);
                 this.particleSystem = new ParticleSystem(particleCanvas, particleCtx);
+                this.floraSystem = new FloraSystem(floraCanvas, floraCtx);
 
-                // MediaPipe 实例
                 this.handLandmarker = null;
-
-                // 状态
                 this.cameraStarted = false;
                 this.lastVideoTime = -1;
-                this.lastPointerPos = null; // 上一帧指尖位置（用于计算速度和画线）
                 this.currentGesture = 'idle';
-                this.gestureFrameCounts = {}; // 每种手势的连续帧计数
-                this.gestureTriggered = {}; // 一次性手势是否已在本轮触发
+                this.gestureFrameCounts = {};
+                this.gestureTriggered = {};
 
-                // FPS 统计
+                // 平滑插值（关键：让绘画在 60fps 丝滑运行）
+                this.smoothX = 0;
+                this.smoothY = 0;
+                this.targetX = 0;
+                this.targetY = 0;
+                this.hasTarget = false;
+                this.isDrawing = false;
+                this.lastSmoothX = null;
+                this.lastSmoothY = null;
+                this.lastDetectSpeed = 0;
+                this.smoothSpeed = 0;
+
+                // 花草模式开关
+                this.floraMode = false;
+
+                // FPS
                 this.frameCount = 0;
                 this.lastFpsTime = performance.now();
                 this.currentFps = 0;
 
-                // 绑定方法
+                // 时间
+                this.lastLoopTime = performance.now();
+
                 this.loop = this.loop.bind(this);
             }
 
-            /** 初始化 MediaPipe（可在页面加载时提前调用） */
             async initMediaPipe() {
                 loadingText.textContent = '正在加载 AI 视觉模型…';
                 try {
@@ -877,11 +1011,8 @@
                 }
             }
 
-            /** 启动摄像头 + 开始主循环 */
             async startCamera() {
                 loadingText.textContent = '正在启动摄像头…';
-
-                // 检测浏览器支持
                 if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                     alert('您的浏览器不支持摄像头访问。请使用 Chrome、Edge 或 Firefox 的最新版本。');
                     return false;
@@ -892,17 +1023,13 @@
                     cameraVideo.srcObject = stream;
                     await cameraVideo.play();
                     this.cameraStarted = true;
-
-                    // 视频元数据就绪后自适应尺寸
                     await new Promise((resolve) => {
                         if (cameraVideo.readyState >= 2) resolve();
                         else cameraVideo.addEventListener('loadedmetadata', resolve, { once: true });
                     });
-
                     this.resize();
                     loadingOverlay.classList.add('hidden');
-                    // 启动主循环
-                    this.lastFrameStamp = performance.now();
+                    this.lastLoopTime = performance.now();
                     requestAnimationFrame(this.loop);
                     return true;
                 };
@@ -916,7 +1043,6 @@
                         },
                     });
                 } catch (err) {
-                    // 降级：不指定分辨率
                     try {
                         return await startStream({ video: { facingMode: 'user' } });
                     } catch (err2) {
@@ -927,11 +1053,9 @@
                 }
             }
 
-            /** 自适应窗口大小，保持视频比例 */
             resize() {
                 const containerW = appContainer.clientWidth;
                 const containerH = appContainer.clientHeight;
-
                 const videoW = cameraVideo.videoWidth || 640;
                 const videoH = cameraVideo.videoHeight || 480;
                 const videoAspect = videoW / videoH;
@@ -939,70 +1063,49 @@
 
                 let drawW, drawH;
                 if (containerAspect > videoAspect) {
-                    // 容器更宽 → 上下留黑边
                     drawH = containerH;
                     drawW = drawH * videoAspect;
                 } else {
-                    // 容器更高 → 左右留黑边
                     drawW = containerW;
                     drawH = drawW / videoAspect;
                 }
 
-                // 定位偏移（居中）
                 const offsetX = (containerW - drawW) / 2;
                 const offsetY = (containerH - drawH) / 2;
+                const sizeAndPos = (canvas, w, h) => {
+                    canvas.width = w;
+                    canvas.height = h;
+                    canvas.style.width = w + 'px';
+                    canvas.style.height = h + 'px';
+                    canvas.style.left = offsetX + 'px';
+                    canvas.style.top = offsetY + 'px';
+                };
 
-                // 更新视频展示 canvas
-                videoDisplay.width = drawW;
-                videoDisplay.height = drawH;
-                videoDisplay.style.width = drawW + 'px';
-                videoDisplay.style.height = drawH + 'px';
-                videoDisplay.style.left = offsetX + 'px';
-                videoDisplay.style.top = offsetY + 'px';
+                sizeAndPos(videoDisplay, drawW, drawH);
+                sizeAndPos(drawingCanvas, drawW, drawH);
+                sizeAndPos(floraCanvas, drawW, drawH);
+                sizeAndPos(particleCanvas, drawW, drawH);
 
-                // 更新绘图 canvas
-                drawingCanvas.width = drawW;
-                drawingCanvas.height = drawH;
-                drawingCanvas.style.width = drawW + 'px';
-                drawingCanvas.style.height = drawH + 'px';
-                drawingCanvas.style.left = offsetX + 'px';
-                drawingCanvas.style.top = offsetY + 'px';
-
-                // 更新粒子 canvas
-                particleCanvas.width = drawW;
-                particleCanvas.height = drawH;
-                particleCanvas.style.width = drawW + 'px';
-                particleCanvas.style.height = drawH + 'px';
-                particleCanvas.style.left = offsetX + 'px';
-                particleCanvas.style.top = offsetY + 'px';
-
-                // 重绘已有笔画（尺寸变化后坐标不变，因为坐标是相对 Canvas 的）
                 this.drawingEngine.redrawAll();
-
-                // 存储当前尺寸和偏移
                 this.drawSize = { w: drawW, h: drawH, offsetX, offsetY };
             }
 
-            /**
-             * 将 MediaPipe 归一化坐标 (0-1) 映射到 Canvas 像素坐标
-             * 注意：所有 Canvas 通过 CSS scaleX(-1) 做视觉镜像翻转，
-             * 因此坐标不需要手动镜像，直接映射即可。
-             */
-            mapToCanvas(normalizedPoint) {
+            mapToCanvas(np) {
                 if (!this.drawSize) return { x: 0, y: 0 };
-                return {
-                    x: normalizedPoint.x * this.drawSize.w,
-                    y: normalizedPoint.y * this.drawSize.h,
-                };
+                return { x: np.x * this.drawSize.w, y: np.y * this.drawSize.h };
             }
 
-            /** 主循环 */
+            /** 主循环 — 60fps 驱动，含平滑插值 */
             loop(timestamp) {
                 requestAnimationFrame(this.loop);
 
                 if (!this.cameraStarted || !this.handLandmarker) return;
 
-                // FPS 统计
+                // 计算帧间隔
+                const rawDt = Math.min((timestamp - this.lastLoopTime) / 1000, 0.1); // cap at 100ms
+                this.lastLoopTime = timestamp;
+
+                // FPS
                 this.frameCount++;
                 if (timestamp - this.lastFpsTime >= 1000) {
                     this.currentFps = Math.round(this.frameCount / ((timestamp - this.lastFpsTime) / 1000));
@@ -1011,34 +1114,68 @@
                     fpsLabel.textContent = 'FPS: ' + this.currentFps;
                 }
 
-                // 渲染摄像头画面到展示 canvas
+                // 渲染摄像头画面
                 if (cameraVideo.readyState >= 2) {
                     const sz = this.drawSize;
                     videoDisplayCtx.drawImage(cameraVideo, 0, 0, sz.w, sz.h);
                 }
 
-                // 只有当视频时间戳变化时才进行检测（避免重复检测同一帧）
+                // 视频帧变化时 → 运行检测
                 if (cameraVideo.readyState >= 2 && cameraVideo.currentTime !== this.lastVideoTime) {
                     this.lastVideoTime = cameraVideo.currentTime;
-
                     let results;
                     try {
                         results = this.handLandmarker.detectForVideo(cameraVideo, performance.now());
                     } catch (e) {
-                        // 检测失败，跳过本帧
-                        return;
+                        // skip
                     }
-
-                    this.processResults(results, timestamp);
+                    if (results) {
+                        this.processDetection(results, rawDt);
+                    }
                 }
 
-                // 每帧更新粒子动画（无论是否有手）
+                // === 平滑插值绘制（每帧执行，无论是否有新检测） ===
+                if (this.isDrawing && this.hasTarget) {
+                    // 平滑因子：越低越丝滑（0.2-0.4 最佳）
+                    const smoothFactor = 0.28;
+                    this.smoothX += (this.targetX - this.smoothX) * smoothFactor;
+                    this.smoothY += (this.targetY - this.smoothY) * smoothFactor;
+
+                    if (this.lastSmoothX !== null) {
+                        const de = this.drawingEngine;
+                        // 平滑速度衰减
+                        this.smoothSpeed += (this.lastDetectSpeed - this.smoothSpeed) * smoothFactor;
+
+                        de.addPoint(this.smoothX, this.smoothY, this.smoothSpeed);
+
+                        if (this.floraMode) {
+                            this.floraSystem.spawnAlongSegment(
+                                this.lastSmoothX, this.lastSmoothY,
+                                this.smoothX, this.smoothY,
+                                de.currentColor
+                            );
+                        } else {
+                            this.particleSystem.spawnAlongSegment(
+                                this.lastSmoothX, this.lastSmoothY,
+                                this.smoothX, this.smoothY,
+                                de.currentColor
+                            );
+                        }
+                    }
+
+                    this.lastSmoothX = this.smoothX;
+                    this.lastSmoothY = this.smoothY;
+                }
+
+                // 更新粒子（始终运行，粒子自己会衰减）
                 this.particleSystem.update();
+                // 更新花草（始终运行，花草自己会生长完成）
+                this.floraSystem.update(rawDt);
+                this.floraSystem.render();
             }
 
-            /** 处理 MediaPipe 检测结果 */
-            processResults(results, loopTimestamp) {
-                // 没有检测到手
+            /** 处理 MediaPipe 检测结果（仅在视频帧变化时调用） */
+            processDetection(results, dt) {
                 if (!results.landmarks || results.landmarks.length === 0) {
                     this.onHandLost();
                     return;
@@ -1048,75 +1185,79 @@
                 const classification = GestureClassifier.classify(landmarks);
                 const gesture = classification.gesture;
 
-                // ---- 防抖处理 ----
-                // 重置非当前手势的计数器
+                // 防抖
                 for (const key of Object.keys(this.gestureFrameCounts)) {
                     if (key !== gesture) {
                         this.gestureFrameCounts[key] = 0;
                         this.gestureTriggered[key] = false;
                     }
                 }
-
-                // 累加当前手势帧数
                 if (!this.gestureFrameCounts[gesture]) this.gestureFrameCounts[gesture] = 0;
                 this.gestureFrameCounts[gesture]++;
 
-                // 手势变化时重置触发标记
                 if (this.currentGesture !== gesture) {
                     this.gestureTriggered[gesture] = false;
                     this.currentGesture = gesture;
                 }
 
-                // 未达到防抖阈值 → 跳过动作执行
                 if (this.gestureFrameCounts[gesture] < CONFIG.debounceFrames) {
                     return;
                 }
 
-                // ---- 执行手势对应动作 ----
+                // ---- 执行手势 ----
                 const pointer = this.mapToCanvas(classification.pointer);
-                const colors = CONFIG.colors;
                 const de = this.drawingEngine;
 
                 switch (gesture) {
                     case 'draw': {
-                        if (this.lastPointerPos) {
-                            // 计算指尖移动速度（像素/帧间隔 → 用于压感映射）
-                            const pxDist = Math.hypot(
-                                pointer.x - this.lastPointerPos.x,
-                                pointer.y - this.lastPointerPos.y
-                            );
-                            const dt = Math.max(8, loopTimestamp - this.lastFrameStamp); // ms
-                            const speed = pxDist / dt; // px/ms
+                        // 设置目标位置（平滑插值用）
+                        this.targetX = pointer.x;
+                        this.targetY = pointer.y;
+                        this.hasTarget = true;
+                        this.isDrawing = true;
 
-                            de.addPoint(pointer.x, pointer.y, speed);
-
-                            // 沿线段生成粒子拖尾
-                            this.particleSystem.spawnAlongSegment(
-                                this.lastPointerPos.x, this.lastPointerPos.y,
-                                pointer.x, pointer.y,
-                                de.currentColor
-                            );
+                        // 初始化平滑位置（首次进入绘画）
+                        if (this.lastSmoothX === null) {
+                            this.smoothX = pointer.x;
+                            this.smoothY = pointer.y;
+                            this.lastSmoothX = pointer.x;
+                            this.lastSmoothY = pointer.y;
                         }
-                        this.lastPointerPos = pointer;
-                        this.lastFrameStamp = loopTimestamp;
-                        this.updateUI('draw', '绘画中 ✨');
+
+                        // 计算检测帧间的速度
+                        if (this.lastDetectX !== undefined && this.lastDetectY !== undefined) {
+                            const pxDist = Math.hypot(pointer.x - this.lastDetectX, pointer.y - this.lastDetectY);
+                            this.lastDetectSpeed = dt > 0.001 ? pxDist / dt : 0;
+                        }
+                        this.lastDetectX = pointer.x;
+                        this.lastDetectY = pointer.y;
+
+                        const modeLabel = this.floraMode ? '花草模式 🌸' : '绘画中 ✨';
+                        this.updateUI('draw', modeLabel);
                         break;
                     }
 
                     case 'lift':
                         de.endStroke();
-                        this.lastPointerPos = null;
+                        this.isDrawing = false;
+                        this.hasTarget = false;
+                        this.lastSmoothX = null;
+                        this.lastSmoothY = null;
                         this.updateUI('lift', '抬笔暂停 ✋');
                         break;
 
-                    case 'clear':
-                        if (!this.gestureTriggered.clear) {
-                            de.clearAll();
-                            this.particleSystem.clear();
-                            this.gestureTriggered.clear = true;
+                    case 'flora':
+                        if (!this.gestureTriggered.flora) {
+                            this.floraMode = !this.floraMode;
+                            this.gestureTriggered.flora = true;
                         }
-                        this.lastPointerPos = null;
-                        this.updateUI('clear', '画布已清除 🧹');
+                        this.isDrawing = false;
+                        this.hasTarget = false;
+                        this.lastSmoothX = null;
+                        this.lastSmoothY = null;
+                        de.endStroke();
+                        const fmsg = this.floraMode ? '花草模式：开 🌸' : '花草模式：关';
+                        this.updateUI('flora', fmsg);
                         break;
 
                     case 'cycle':
@@ -1124,7 +1265,10 @@
                             de.cycleColor();
                             this.gestureTriggered.cycle = true;
                         }
-                        this.lastPointerPos = null;
+                        this.isDrawing = false;
+                        this.hasTarget = false;
+                        this.lastSmoothX = null;
+                        this.lastSmoothY = null;
                         this.updateUI('cycle', '颜色切换 → ' + de.currentColor);
                         break;
 
@@ -1133,30 +1277,36 @@
                             de.undoLastStroke();
                             this.gestureTriggered.undo = true;
                         }
-                        this.lastPointerPos = null;
+                        this.isDrawing = false;
+                        this.hasTarget = false;
+                        this.lastSmoothX = null;
+                        this.lastSmoothY = null;
                         this.updateUI('undo', '撤销一笔 ↩');
                         break;
 
-                    default: // idle
+                    default:
                         de.endStroke();
-                        this.lastPointerPos = null;
+                        this.isDrawing = false;
+                        this.hasTarget = false;
+                        this.lastSmoothX = null;
+                        this.lastSmoothY = null;
                         this.updateUI('idle', '伸出食指开始绘画 ☝️');
                         break;
                 }
             }
 
-            /** 手离开画面时的处理 */
             onHandLost() {
                 this.drawingEngine.endStroke();
-                this.lastPointerPos = null;
-                // 重置所有手势计数
+                this.isDrawing = false;
+                this.hasTarget = false;
+                this.lastSmoothX = null;
+                this.lastSmoothY = null;
                 this.gestureFrameCounts = {};
                 this.gestureTriggered = {};
                 this.currentGesture = 'idle';
                 this.updateUI('idle', '未检测到手 🖐️');
             }
 
-            /** 更新 UI 状态 */
             updateUI(gesture, statusText) {
                 gestureLabel.textContent = statusText;
 
@@ -1165,19 +1315,21 @@
                 colorDot.style.backgroundColor = color;
                 colorLabel.textContent = color;
 
-                // 同步颜色选择器
+                if (this.floraMode) {
+                    floraIndicator.textContent = '🌸 花草';
+                    floraIndicator.className = 'flora-indicator flora-on';
+                } else {
+                    floraIndicator.textContent = '🌿 普通';
+                    floraIndicator.className = 'flora-indicator flora-off';
+                }
+
                 if (colorPicker.value !== color) {
                     colorPicker.value = color;
                 }
 
-                // 高亮当前手势提示
                 gestureHintSpans.forEach(span => {
                     const g = span.dataset.gesture;
-                    if (g === gesture) {
-                        span.classList.add('active');
-                    } else {
-                        span.classList.remove('active');
-                    }
+                    span.classList.toggle('active', g === gesture);
                 });
             }
         }
@@ -1185,24 +1337,20 @@
         // ============================================================
         //  UI 事件绑定
         // ============================================================
-
-        // 实例化主控制器
         const app = new AppController();
 
-        // 清空按钮
         document.getElementById('clear-btn').addEventListener('click', () => {
             app.drawingEngine.clearAll();
             app.particleSystem.clear();
+            app.floraSystem.clear();
             app.updateUI('clear', '画布已清除 🧹');
         });
 
-        // 撤销按钮
         document.getElementById('undo-btn').addEventListener('click', () => {
             app.drawingEngine.undoLastStroke();
             app.updateUI('undo', '撤销一笔 ↩');
         });
 
-        // 保存按钮
         document.getElementById('save-btn').addEventListener('click', () => {
             const dataUrl = app.drawingEngine.exportImage('#0d0d0d');
             const link = document.createElement('a');
@@ -1212,38 +1360,36 @@
             app.updateUI(app.currentGesture, '图片已保存 💾');
         });
 
-        // 颜色选择器
         colorPicker.addEventListener('input', () => {
             app.drawingEngine.setManualColor(colorPicker.value);
             app.updateUI(app.currentGesture, '手动选色: ' + colorPicker.value);
         });
 
-        // 摄像头启动按钮
         document.getElementById('camera-btn').addEventListener('click', async () => {
-            document.getElementById('camera-btn').disabled = true;
-            document.getElementById('camera-btn').textContent = '⏳ 启动中…';
+            const btn = document.getElementById('camera-btn');
+            btn.disabled = true;
+            btn.textContent = '⏳ 启动中…';
             const ok = await app.startCamera();
             if (!ok) {
-                document.getElementById('camera-btn').disabled = false;
-                document.getElementById('camera-btn').textContent = '📷 启动摄像头（重试）';
+                btn.disabled = false;
+                btn.textContent = '📷 启动摄像头（重试）';
                 return;
             }
-            document.getElementById('camera-btn').textContent = '📷 摄像头运行中';
-            document.getElementById('camera-btn').style.opacity = '0.5';
-            document.getElementById('camera-btn').style.pointerEvents = 'none';
+            btn.textContent = '📷 摄像头运行中';
+            btn.style.opacity = '0.5';
+            btn.style.pointerEvents = 'none';
         });
 
-        // 窗口缩放
         window.addEventListener('resize', () => {
             if (app.cameraStarted) app.resize();
         });
 
-        // 键盘快捷键
         window.addEventListener('keydown', (e) => {
             switch (e.key.toLowerCase()) {
                 case 'c':
                     app.drawingEngine.clearAll();
                     app.particleSystem.clear();
+                    app.floraSystem.clear();
                     app.updateUI('clear', '画布已清除 🧹 [快捷键]');
                     break;
                 case 'z':
@@ -1257,6 +1403,11 @@
                     link.href = dataUrl;
                     link.click();
                     break;
+                case 'f':
+                    app.floraMode = !app.floraMode;
+                    const fmsg = app.floraMode ? '花草模式：开 🌸' : '花草模式：关';
+                    app.updateUI('flora', fmsg);
+                    break;
             }
         });
 
@@ -1264,11 +1415,8 @@
         //  启动流程
         // ============================================================
         (async function bootstrap() {
-            // ---- 自动检测：是否通过 file:// 协议打开 ----
             if (window.location.protocol === 'file:') {
-                // 隐藏加载动画
                 loadingOverlay.querySelector('.spinner').style.display = 'none';
-                // 显示醒目错误提示
                 loadingText.innerHTML = `
                     <div style="font-size:1.8rem;margin-bottom:12px;">⚠️ 检测到直接打开文件</div>
                     <div style="color:#ff6b6b;margin-bottom:20px;">摄像头与 AI 模型需要本地服务器环境</div>
@@ -1284,16 +1432,11 @@
                 `;
                 loadingText.style.maxWidth = '460px';
                 loadingText.style.textAlign = 'center';
-                return; // 停止后续初始化
+                return;
             }
 
-            // 1. 预加载 MediaPipe 模型（后台进行）
             const mediaPipeReady = app.initMediaPipe().catch(() => false);
-
-            // 2. 显示加载界面，等待用户点击启动摄像头
             loadingText.textContent = '模型加载中，请稍候…';
-
-            // 3. 如果模型先加载好，更新提示
             const mpOk = await mediaPipeReady;
             if (mpOk) {
                 loadingText.textContent = '模型就绪！点击 "📷 启动摄像头" 开始';
@@ -1302,14 +1445,14 @@
             }
         })();
 
-        console.log('🚀 Air Draw — 手势隔空作画');
+        console.log('🚀 Air Draw — 手势隔空作画 v2');
         console.log('  手势说明：');
         console.log('    ☝️  伸出食指 → 绘画');
         console.log('    🤏  拇指+食指捏合 → 抬笔暂停');
-        console.log('    👌  OK手势 → 清除画布');
+        console.log('    👌  OK手势 → 切换花草/普通模式');
         console.log('    🖐️  五指张开 → 切换颜色');
         console.log('    ✊  握拳 → 撤销一笔');
-        console.log('  快捷键：C=清空 Z=撤销 S=保存');
+        console.log('  快捷键：C=清空 Z=撤销 S=保存 F=切换花草模式');
     </script>
 </body>
 </html>
