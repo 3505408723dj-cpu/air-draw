@@ -184,6 +184,30 @@
             cursor: pointer;
             padding: 2px;
         }
+        #control-panel input[type="range"] {
+            width: 100%;
+            height: 6px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: rgba(255,255,255,0.15);
+            border-radius: 3px;
+            outline: none;
+            cursor: pointer;
+        }
+        #control-panel input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #6c5ce7;
+            border: 2px solid rgba(255,255,255,0.5);
+            cursor: pointer;
+            transition: transform 0.15s;
+        }
+        #control-panel input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
         #control-panel button {
             width: 100%;
             padding: 10px 12px;
@@ -300,6 +324,8 @@
         <div id="control-panel">
             <label for="color-picker">🎨 画笔颜色</label>
             <input type="color" id="color-picker" value="#ff0000">
+            <label for="brush-size">🖌️ 笔刷大小: <span id="brush-size-label">5</span></label>
+            <input type="range" id="brush-size" min="1" max="14" value="5" step="0.5">
             <button id="clear-btn">🧹 清空画布</button>
             <button id="undo-btn">↩ 撤销一笔</button>
             <button id="save-btn">💾 保存图片</button>
@@ -310,7 +336,7 @@
             <span data-gesture="draw">☝️ 绘画</span>
             <span data-gesture="lift">🤏 抬笔</span>
             <span data-gesture="flora">👌 花草</span>
-            <span data-gesture="undo">✊ 撤销</span>
+            <span data-gesture="undo">🖕 撤销</span>
             <span data-gesture="cycle">🖐️ 换色</span>
         </div>
     </div>
@@ -342,6 +368,7 @@
             particleDensity: 1.6,
             cameraWidth: { ideal: 1920 },
             cameraHeight: { ideal: 1080 },
+            gestureCooldown: 400,  // 离散手势冷却间隔（ms），防止连撤等问题
         };
 
         const FLORA_CONFIG = {
@@ -425,7 +452,7 @@
             }
 
             /**
-             * 优先级：OK（花草开关）→ 五指 → 捏合 → 握拳 → 食指 → 无手势
+             * 优先级：OK（花草）→ 五指（换色）→ 捏合（抬笔）→ 中指（撤销）→ 食指（绘画）→ 无手势
              */
             function classify(landmarks) {
                 if (!landmarks || landmarks.length < 21) {
@@ -437,13 +464,6 @@
                 const ringUp = isFingerExtended(landmarks, L.RING_TIP, L.RING_PIP, L.RING_MCP);
                 const pinkyUp = isFingerExtended(landmarks, L.PINKY_TIP, L.PINKY_PIP, L.PINKY_MCP);
                 const thumbUp = isThumbExtended(landmarks);
-
-                const indexCurled = isFingerCurled(landmarks, L.INDEX_TIP, L.INDEX_PIP);
-                const middleCurled = isFingerCurled(landmarks, L.MIDDLE_TIP, L.MIDDLE_PIP);
-                const ringCurled = isFingerCurled(landmarks, L.RING_TIP, L.RING_PIP);
-                const pinkyCurled = isFingerCurled(landmarks, L.PINKY_TIP, L.PINKY_PIP);
-                const thumbToIndexMcp = dist(landmarks[L.THUMB_TIP], landmarks[L.INDEX_MCP]);
-                const thumbCurled = thumbToIndexMcp < 0.09;
 
                 const pinchDist = dist(landmarks[L.THUMB_TIP], landmarks[L.INDEX_TIP]);
                 const isPinching = pinchDist < CONFIG.pinchThreshold;
@@ -471,14 +491,12 @@
                     return { gesture: 'lift', pointer };
                 }
 
-                // 4. 握拳 → 撤销
-                const allCurled = indexCurled && middleCurled && ringCurled && pinkyCurled;
-                const noneExtended = !indexUp && !middleUp && !ringUp && !pinkyUp;
-                if (allCurled && noneExtended && (thumbCurled || !thumbUp)) {
+                // 4. 仅中指伸出 → 撤销
+                if (!indexUp && middleUp && !ringUp && !pinkyUp) {
                     return { gesture: 'undo', pointer };
                 }
 
-                // 5. 仅食指伸出 → 绘画
+                // 6. 仅食指伸出 → 绘画
                 if (indexUp && !middleUp && !ringUp && !pinkyUp) {
                     return { gesture: 'draw', pointer };
                 }
@@ -512,6 +530,7 @@
                 this.currentStroke = null;
                 this.currentColorIdx = 0;
                 this.manualColor = null;
+                this.baseWidth = CONFIG.baseStrokeWidth;
                 this.ctx.lineCap = 'round';
                 this.ctx.lineJoin = 'round';
             }
@@ -534,9 +553,14 @@
                 return Math.max(
                     CONFIG.minStrokeWidth,
                     Math.min(CONFIG.maxStrokeWidth,
-                        CONFIG.baseStrokeWidth / (1 + cs * CONFIG.speedFactor)
+                        this.baseWidth / (1 + cs * CONFIG.speedFactor)
                     )
                 );
+            }
+
+            setBaseWidth(w) {
+                this.baseWidth = w;
+                this.endStroke();
             }
 
             renderLastSegment() {
@@ -1264,6 +1288,9 @@
                 // 花草模式开关
                 this.floraMode = false;
 
+                // 手势冷却计时（防止连撤等问题）
+                this.lastGestureTriggerTime = {};
+
                 // FPS
                 this.frameCount = 0;
                 this.lastFpsTime = performance.now();
@@ -1495,6 +1522,16 @@
                     return;
                 }
 
+                // ---- 冷却检查：离散手势需间隔足够时间 ----
+                const DISCRETE_GESTURES = ['flora', 'cycle', 'undo'];
+                if (DISCRETE_GESTURES.includes(gesture)) {
+                    const now = performance.now();
+                    const lastTime = this.lastGestureTriggerTime[gesture] || 0;
+                    if (now - lastTime < CONFIG.gestureCooldown) {
+                        return; // 冷却中，忽略
+                    }
+                }
+
                 // ---- 执行手势 ----
                 const pointer = this.mapToCanvas(classification.pointer);
                 const de = this.drawingEngine;
@@ -1541,6 +1578,7 @@
                         if (!this.gestureTriggered.flora) {
                             this.floraMode = !this.floraMode;
                             this.gestureTriggered.flora = true;
+                            this.lastGestureTriggerTime.flora = performance.now();
                         }
                         this.isDrawing = false;
                         this.hasTarget = false;
@@ -1555,6 +1593,7 @@
                         if (!this.gestureTriggered.cycle) {
                             de.cycleColor();
                             this.gestureTriggered.cycle = true;
+                            this.lastGestureTriggerTime.cycle = performance.now();
                         }
                         this.isDrawing = false;
                         this.hasTarget = false;
@@ -1567,6 +1606,7 @@
                         if (!this.gestureTriggered.undo) {
                             this.undoLastStroke();
                             this.gestureTriggered.undo = true;
+                            this.lastGestureTriggerTime.undo = performance.now();
                         }
                         this.isDrawing = false;
                         this.hasTarget = false;
@@ -1590,6 +1630,38 @@
             undoLastStroke() {
                 this.drawingEngine.undoLastStroke();
                 this.floraSystem.rebakeAll(drawingCtx);
+            }
+
+            /** 保存图片（含摄像头画面 + 绘图内容） */
+            saveWithCamera() {
+                if (!this.drawSize) return;
+                const sz = this.drawSize;
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = sz.w;
+                tempCanvas.height = sz.h;
+                const tempCtx = tempCanvas.getContext('2d');
+
+                // 1. 绘制镜像后的摄像头画面（与屏幕显示一致）
+                tempCtx.save();
+                tempCtx.translate(sz.w, 0);
+                tempCtx.scale(-1, 1);
+                if (cameraVideo.readyState >= 2) {
+                    tempCtx.drawImage(cameraVideo, 0, 0, sz.w, sz.h);
+                }
+                tempCtx.restore();
+
+                // 2. 叠加绘图画布
+                tempCtx.drawImage(drawingCanvas, 0, 0);
+
+                // 3. 叠加已烘焙的花草
+                tempCtx.drawImage(floraCanvas, 0, 0);
+
+                // 4. 触发下载
+                const dataUrl = tempCanvas.toDataURL('image/png');
+                const link = document.createElement('a');
+                link.download = 'air-draw-' + new Date().toISOString().slice(0, 19).replace(/:/g, '-') + '.png';
+                link.href = dataUrl;
+                link.click();
             }
 
             onHandLost() {
@@ -1649,17 +1721,22 @@
         });
 
         document.getElementById('save-btn').addEventListener('click', () => {
-            const dataUrl = app.drawingEngine.exportImage('#0d0d0d');
-            const link = document.createElement('a');
-            link.download = 'air-draw-' + new Date().toISOString().slice(0, 19).replace(/:/g, '-') + '.png';
-            link.href = dataUrl;
-            link.click();
+            app.saveWithCamera();
             app.updateUI(app.currentGesture, '图片已保存 💾');
         });
 
         colorPicker.addEventListener('input', () => {
             app.drawingEngine.setManualColor(colorPicker.value);
             app.updateUI(app.currentGesture, '手动选色: ' + colorPicker.value);
+        });
+
+        const brushSizeSlider = document.getElementById('brush-size');
+        const brushSizeLabel = document.getElementById('brush-size-label');
+        brushSizeSlider.addEventListener('input', () => {
+            const val = parseFloat(brushSizeSlider.value);
+            app.drawingEngine.setBaseWidth(val);
+            brushSizeLabel.textContent = val;
+            app.updateUI(app.currentGesture, '笔刷大小: ' + val);
         });
 
         document.getElementById('camera-btn').addEventListener('click', async () => {
@@ -1694,11 +1771,8 @@
                     app.updateUI('undo', '撤销一笔 ↩ [快捷键]');
                     break;
                 case 's':
-                    const dataUrl = app.drawingEngine.exportImage('#0d0d0d');
-                    const link = document.createElement('a');
-                    link.download = 'air-draw-' + new Date().toISOString().slice(0, 19).replace(/:/g, '-') + '.png';
-                    link.href = dataUrl;
-                    link.click();
+                    app.saveWithCamera();
+                    app.updateUI(app.currentGesture, '图片已保存 💾 [快捷键]');
                     break;
                 case 'f':
                     app.floraMode = !app.floraMode;
@@ -1748,7 +1822,7 @@
         console.log('    🤏  拇指+食指捏合 → 抬笔暂停');
         console.log('    👌  OK手势 → 切换花草/普通模式');
         console.log('    🖐️  五指张开 → 切换颜色');
-        console.log('    ✊  握拳 → 撤销一笔');
+        console.log('    🖕  仅中指 → 撤销一笔');
         console.log('  快捷键：C=清空 Z=撤销 S=保存 F=切换花草模式');
     </script>
 </body>
