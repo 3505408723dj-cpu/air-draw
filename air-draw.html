@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Air Draw — 手势隔空作画</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <style>
         /* ========== 全局重置与基础样式 ========== */
         *, *::before, *::after {
@@ -13,8 +16,8 @@
         }
 
         body {
-            font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-            background: #0d0d0d;
+            font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: #0A0A1A;
             overflow: hidden;
             height: 100vh;
             width: 100vw;
@@ -22,14 +25,35 @@
             -webkit-user-select: none;
             touch-action: none;
         }
+        /* Aurora 极光背景动画层 */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: -50%;
+            z-index: 0;
+            background:
+                radial-gradient(ellipse at 20% 60%, #5D34D0 0%, transparent 55%),
+                radial-gradient(ellipse at 75% 25%, #FF006E 0%, transparent 55%),
+                radial-gradient(ellipse at 50% 85%, #00F0FF 0%, transparent 55%),
+                radial-gradient(ellipse at 85% 70%, #5D34D0 0%, transparent 40%);
+            animation: auroraDrift 50s ease-in-out infinite;
+            pointer-events: none;
+        }
+        @keyframes auroraDrift {
+            0%, 100% { transform: translate(0, 0) rotate(0deg) scale(1); }
+            25% { transform: translate(3%, -2%) rotate(2deg) scale(1.08); }
+            50% { transform: translate(-1%, 3%) rotate(-1deg) scale(1.04); }
+            75% { transform: translate(2%, 1%) rotate(1.5deg) scale(1.06); }
+        }
 
         /* ========== 主容器 ========== */
         #app-container {
             position: relative;
+            z-index: 1;
             width: 100vw;
             height: 100vh;
             overflow: hidden;
-            background: #000;
+            background: transparent;
         }
 
         /* ========== 视频元素（隐藏，仅供给 MediaPipe） ========== */
@@ -76,7 +100,7 @@
             position: absolute;
             inset: 0;
             z-index: 100;
-            background: rgba(0,0,0,0.85);
+            background: rgba(10, 10, 26, 0.88);
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -92,11 +116,11 @@
         #loading-overlay .spinner {
             width: 48px;
             height: 48px;
-            border: 4px solid rgba(255,255,255,0.2);
-            border-top-color: #6c5ce7;
+            border: 4px solid rgba(255,255,255,0.12);
+            border-top-color: #FF006E;
             border-radius: 50%;
             animation: spin 0.8s linear infinite;
-            margin-bottom: 16px;
+            box-shadow: 0 0 20px rgba(255, 0, 110, 0.3);
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -106,10 +130,10 @@
             top: 16px;
             left: 16px;
             z-index: 30;
-            background: rgba(0,0,0,0.7);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.15);
+            background: rgba(30, 12, 60, 0.82);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border: 1px solid rgba(255, 0, 110, 0.25);
             border-radius: 12px;
             padding: 12px 16px;
             color: #fff;
@@ -117,10 +141,12 @@
             line-height: 1.6;
             min-width: 160px;
             transition: all 0.3s;
+            box-shadow: 0 0 24px rgba(255, 0, 110, 0.12), 0 0 8px rgba(0, 240, 255, 0.06);
         }
         #status-badge .gesture-name {
-            font-weight: 700;
+            font-weight: 800;
             font-size: 1.1rem;
+            letter-spacing: 0.3px;
         }
         #status-badge .color-dot {
             display: inline-block;
@@ -130,6 +156,7 @@
             vertical-align: middle;
             margin-right: 4px;
             border: 1px solid rgba(255,255,255,0.4);
+            box-shadow: 0 0 6px currentColor;
         }
         #status-badge .flora-indicator {
             display: inline-block;
@@ -141,11 +168,11 @@
             margin-left: 4px;
         }
         #status-badge .flora-on {
-            background: rgba(76,175,80,0.3);
-            color: #81c784;
+            background: rgba(0, 240, 255, 0.18);
+            color: #00F0FF;
         }
         #status-badge .flora-off {
-            background: rgba(255,255,255,0.1);
+            background: rgba(255,255,255,0.08);
             color: #999;
         }
 
@@ -155,18 +182,19 @@
             top: 16px;
             right: 16px;
             z-index: 101;
-            background: rgba(0,0,0,0.7);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.15);
+            background: rgba(30, 12, 60, 0.82);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border: 1px solid rgba(255, 0, 110, 0.25);
             border-radius: 12px;
             padding: 14px;
             display: flex;
             flex-direction: column;
             gap: 10px;
-            min-width: 180px;
+            min-width: 200px;
             color: #fff;
             font-size: 0.85rem;
+            box-shadow: 0 0 24px rgba(255, 0, 110, 0.1);
         }
         #control-panel label {
             font-weight: 600;
@@ -200,32 +228,40 @@
             width: 20px;
             height: 20px;
             border-radius: 50%;
-            background: #6c5ce7;
+            background: #FF006E;
             border: 2px solid rgba(255,255,255,0.5);
             cursor: pointer;
-            transition: transform 0.15s;
+            transition: transform 0.15s, box-shadow 0.15s;
+            box-shadow: 0 0 12px rgba(255, 0, 110, 0.5);
         }
         #control-panel input[type="range"]::-webkit-slider-thumb:hover {
             transform: scale(1.2);
+            box-shadow: 0 0 20px rgba(255, 0, 110, 0.7);
         }
         #control-panel button {
             width: 100%;
             padding: 10px 12px;
-            border: 1px solid rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.15);
             border-radius: 8px;
-            background: rgba(255,255,255,0.08);
-            color: #fff;
+            background: rgba(255,255,255,0.06);
+            color: #ddd;
             font-size: 0.85rem;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
             display: flex;
             align-items: center;
             gap: 6px;
             justify-content: center;
         }
         #control-panel button:hover {
-            background: rgba(255,255,255,0.18);
-            border-color: rgba(255,255,255,0.4);
+            background: rgba(255, 0, 110, 0.12);
+            border-color: rgba(255, 0, 110, 0.4);
+            color: #fff;
+            box-shadow: 0 0 15px rgba(255, 0, 110, 0.2);
+            transform: scale(1.02);
+        }
+        #control-panel button:active {
+            transform: scale(0.96);
         }
         #control-panel button:active {
             transform: scale(0.96);
@@ -239,6 +275,37 @@
         #camera-btn { border-color: rgba(108,92,231,0.5) !important; }
         #camera-btn:hover { background: rgba(108,92,231,0.2) !important; }
 
+        /* ========== 笔刷选择器 ========== */
+        #brush-selector {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+        #brush-selector .brush-btn {
+            padding: 6px 10px;
+            font-size: 0.75rem;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 6px;
+            background: rgba(255,255,255,0.06);
+            color: #aaa;
+            cursor: pointer;
+            transition: all 0.2s;
+            flex: 1 1 auto;
+            min-width: 44px;
+            text-align: center;
+        }
+        #brush-selector .brush-btn:hover {
+            background: rgba(255,255,255,0.14);
+            color: #fff;
+        }
+        #brush-selector .brush-btn.active {
+            background: rgba(255, 0, 110, 0.28);
+            border-color: rgba(255, 0, 110, 0.65);
+            color: #fff;
+            font-weight: 700;
+            box-shadow: 0 0 14px rgba(255, 0, 110, 0.35);
+        }
+
         /* ========== 手势提示卡（底部居中） ========== */
         #gesture-hints {
             position: absolute;
@@ -246,26 +313,27 @@
             left: 50%;
             transform: translateX(-50%);
             z-index: 30;
-            background: rgba(0,0,0,0.65);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(30, 12, 60, 0.78);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border: 1px solid rgba(255, 0, 110, 0.2);
             border-radius: 28px;
             padding: 8px 20px;
             display: flex;
             gap: 16px;
-            color: #ccc;
+            color: #bbb;
             font-size: 0.78rem;
             align-items: center;
+            box-shadow: 0 0 20px rgba(255, 0, 110, 0.08);
         }
         #gesture-hints span {
             white-space: nowrap;
-            transition: color 0.3s;
+            transition: all 0.3s;
         }
         #gesture-hints span.active {
             color: #fff;
             font-weight: 700;
-            text-shadow: 0 0 8px rgba(108,92,231,0.8);
+            text-shadow: 0 0 14px rgba(255, 0, 110, 0.9), 0 0 4px rgba(255, 255, 255, 0.5);
         }
 
         /* ========== 响应式：窄屏适配 ========== */
@@ -324,8 +392,16 @@
         <div id="control-panel">
             <label for="color-picker">🎨 画笔颜色</label>
             <input type="color" id="color-picker" value="#ff0000">
-            <label for="brush-size">🖌️ 笔刷大小: <span id="brush-size-label">5</span></label>
-            <input type="range" id="brush-size" min="1" max="14" value="5" step="0.5">
+            <label for="brush-size">📏 笔刷大小: <span id="brush-size-label">8</span></label>
+            <input type="range" id="brush-size" min="1" max="40" value="8" step="0.5">
+            <label>🖌️ 笔刷样式</label>
+            <div id="brush-selector">
+                <button data-brush="standard" class="brush-btn active">标准</button>
+                <button data-brush="calligraphy" class="brush-btn">毛笔</button>
+                <button data-brush="marker" class="brush-btn">马克笔</button>
+                <button data-brush="sketch" class="brush-btn">素描</button>
+                <button data-brush="oil" class="brush-btn">油画</button>
+            </div>
             <button id="clear-btn">🧹 清空画布</button>
             <button id="undo-btn">↩ 撤销一笔</button>
             <button id="save-btn">💾 保存图片</button>
@@ -336,7 +412,7 @@
             <span data-gesture="draw">☝️ 绘画</span>
             <span data-gesture="lift">🤏 抬笔</span>
             <span data-gesture="flora">👌 花草</span>
-            <span data-gesture="undo">🖕 撤销</span>
+            <span data-gesture="undo">✌️ 撤销</span>
             <span data-gesture="cycle">🖐️ 换色</span>
         </div>
     </div>
@@ -369,10 +445,15 @@
             cameraWidth: { ideal: 1920 },
             cameraHeight: { ideal: 1080 },
             gestureCooldown: 400,  // 离散手势冷却间隔（ms），防止连撤等问题
+            discreteGestureDebounce: 3, // 离散手势需连续多少帧确认，防止单帧误识别
+            // 手部深度感应：用手掌大小（手腕到中指根距离）推算手离摄像头远近
+            depthHandSizeMin: 0.06,   // 手很远时的手掌尺寸
+            depthHandSizeMax: 0.42,   // 手很近时的手掌尺寸
         };
 
         const FLORA_CONFIG = {
             maxElements: 350,
+            maxCompleted: 600,        // completed 列表上限，超出时淘汰最旧的
             spawnDensity: 12,
             stemMin: 10,
             stemMax: 50,
@@ -438,7 +519,13 @@
                 const tip = landmarks[tipIdx];
                 const pip = landmarks[pipIdx];
                 const mcp = landmarks[mcpIdx];
-                return tip.y < pip.y && tip.y < mcp.y;
+                // 基础 Y 轴检查：指尖必须在 PIP 和 MCP 之上
+                if (!(tip.y < pip.y && tip.y < mcp.y)) return false;
+                // 骨骼比例检查：伸展的手指 tip→pip 距离近似 pip→mcp 距离
+                // 弯曲的手指 tip→pip 距离明显更短（指尖折向关节，2D 投影收缩）
+                const tipToPip = dist(tip, pip);
+                const pipToMcp = dist(pip, mcp);
+                return tipToPip > pipToMcp * 0.55;
             }
 
             function isFingerCurled(landmarks, tipIdx, pipIdx) {
@@ -472,36 +559,44 @@
                     x: landmarks[L.INDEX_TIP].x,
                     y: landmarks[L.INDEX_TIP].y,
                 };
+                // 手部深度：用手掌大小（手腕→中指根）推算距离
+                const handSize = dist(landmarks[L.WRIST], landmarks[L.MIDDLE_MCP]);
 
                 // 1. OK 手势 → 切换花草模式（不再清屏）
                 if (isPinching && middleUp && ringUp && pinkyUp) {
-                    return { gesture: 'flora', pointer };
+                    return { gesture: 'flora', pointer, handSize };
                 }
 
                 // 2. 五指张开 → 换色
                 if (thumbUp && indexUp && middleUp && ringUp && pinkyUp) {
-                    return { gesture: 'cycle', pointer };
+                    return { gesture: 'cycle', pointer, handSize };
                 }
 
                 // 3. 捏合 → 抬笔
                 if (isPinching && !middleUp && !ringUp && !pinkyUp) {
-                    return { gesture: 'lift', pointer };
+                    return { gesture: 'lift', pointer, handSize };
                 }
-                if (isPinching) {
-                    return { gesture: 'lift', pointer };
+                // 兜底捏合：排除明确的绘画姿态（食指伸展+其余收起），防止绘画时拇指误靠近食指
+                if (isPinching && !(indexUp && !middleUp && !ringUp && !pinkyUp)) {
+                    return { gesture: 'lift', pointer, handSize };
                 }
 
-                // 4. 仅中指伸出 → 撤销
-                if (!indexUp && middleUp && !ringUp && !pinkyUp) {
-                    return { gesture: 'undo', pointer };
+                // 4. 食指+中指同时举起 → 撤销 (✌️)
+                // ★ 中指必须"明确"伸展——不只是被食指带动而轻微翘起
+                // 要求中指指尖高于 PIP 的距离 > PIP→MCP 高度的 35%
+                const midPipToMcpY = Math.abs(landmarks[L.MIDDLE_MCP].y - landmarks[L.MIDDLE_PIP].y);
+                const midTipAbovePip = landmarks[L.MIDDLE_PIP].y - landmarks[L.MIDDLE_TIP].y;
+                const middleClearlyUp = middleUp && midTipAbovePip > midPipToMcpY * 0.35;
+                if (indexUp && middleClearlyUp && !ringUp && !pinkyUp) {
+                    return { gesture: 'undo', pointer, handSize };
                 }
 
                 // 6. 仅食指伸出 → 绘画
                 if (indexUp && !middleUp && !ringUp && !pinkyUp) {
-                    return { gesture: 'draw', pointer };
+                    return { gesture: 'draw', pointer, handSize };
                 }
 
-                return { gesture: 'idle', pointer };
+                return { gesture: 'idle', pointer, handSize };
             }
 
             return { classify, L };
@@ -511,16 +606,16 @@
         //  笔划类
         // ============================================================
         class Stroke {
-            constructor(color, baseWidth) {
+            constructor(color, brushType) {
                 this.color = color;
-                this.baseWidth = baseWidth;
-                /** @type {{x:number, y:number, width:number}[]} */
+                this.brushType = brushType;
+                /** @type {{x:number, y:number, width:number, angle:number, jx:number, jy:number, depth:number}[]} */
                 this.points = [];
             }
         }
 
         // ============================================================
-        //  绘图引擎
+        //  绘图引擎 — 支持 5 种笔刷样式
         // ============================================================
         class DrawingEngine {
             constructor(canvas, ctx) {
@@ -531,6 +626,9 @@
                 this.currentColorIdx = 0;
                 this.manualColor = null;
                 this.baseWidth = CONFIG.baseStrokeWidth;
+                this.brushType = 'standard';
+                /** 当前手的深度因子 (0=远, 1=近) */
+                this.depthFactor = 0.5;
                 this.ctx.lineCap = 'round';
                 this.ctx.lineJoin = 'round';
             }
@@ -539,23 +637,64 @@
                 return this.manualColor || CONFIG.colors[this.currentColorIdx];
             }
 
-            addPoint(x, y, speed) {
+            setBrushType(type) {
+                this.endStroke();
+                this.brushType = type;
+            }
+
+            setDepthFactor(v) {
+                this.depthFactor = Math.max(0, Math.min(1, v));
+            }
+
+            addPoint(x, y, speed, prevX, prevY) {
                 if (!this.currentStroke) {
-                    this.currentStroke = new Stroke(this.currentColor, CONFIG.baseStrokeWidth);
+                    this.currentStroke = new Stroke(this.currentColor, this.brushType);
                 }
                 const width = this.calcWidth(speed);
-                this.currentStroke.points.push({ x, y, width });
+                let angle = 0;
+                if (prevX !== undefined && prevY !== undefined) {
+                    const dx = x - prevX;
+                    const dy = y - prevY;
+                    if (Math.abs(dx) > 0.001 || Math.abs(dy) > 0.001) {
+                        angle = Math.atan2(dy, dx);
+                    }
+                }
+                // 素描笔刷：抖动幅度随深度变化（手近→抖动小=精细，手远→抖动大=粗犷）
+                const jitterAmp = this.brushType === 'sketch' ? (2.5 - this.depthFactor * 1.8) : 1.8;
+                const jx = (Math.random() - 0.5) * jitterAmp;
+                const jy = (Math.random() - 0.5) * jitterAmp;
+                this.currentStroke.points.push({ x, y, width, angle, jx, jy, depth: this.depthFactor });
                 this.renderLastSegment();
             }
 
             calcWidth(speed) {
                 const cs = Math.max(0, Math.min(speed, CONFIG.maxSpeed));
-                return Math.max(
+                let baseW = Math.max(
                     CONFIG.minStrokeWidth,
                     Math.min(CONFIG.maxStrokeWidth,
                         this.baseWidth / (1 + cs * CONFIG.speedFactor)
                     )
                 );
+                // 深度影响宽度：手近→宽，手远→窄
+                const depthMult = 0.55 + this.depthFactor * 1.0;
+                switch (this.brushType) {
+                    case 'oil':
+                        baseW *= (1.5 + this.depthFactor * 2.0); // 1.5x~3.5x 厚涂
+                        break;
+                    case 'calligraphy':
+                        baseW *= (0.7 + this.depthFactor * 1.3); // 0.7x~2.0x
+                        break;
+                    case 'marker':
+                        baseW *= 0.85; // 等宽，基本不变
+                        break;
+                    case 'sketch':
+                        baseW = Math.min(baseW * depthMult, 4.0); // 细线，最粗 4px
+                        break;
+                    default:
+                        baseW *= depthMult;
+                        break;
+                }
+                return baseW;
             }
 
             setBaseWidth(w) {
@@ -563,19 +702,245 @@
                 this.endStroke();
             }
 
+            // ── 渲染分发 ──
             renderLastSegment() {
                 const pts = this.currentStroke.points;
                 if (pts.length < 2) return;
-                const p0 = pts[pts.length - 2];
-                const p1 = pts[pts.length - 1];
-                this.ctx.strokeStyle = this.currentStroke.color;
-                this.ctx.lineWidth = p1.width;
-                this.ctx.globalAlpha = 0.92;
-                this.ctx.beginPath();
-                this.ctx.moveTo(p0.x, p0.y);
-                this.ctx.lineTo(p1.x, p1.y);
-                this.ctx.stroke();
-                this.ctx.globalAlpha = 1;
+                this._renderSegment(this.ctx, this.currentStroke, pts.length - 1);
+            }
+
+            _renderSegment(ctx, stroke, i) {
+                const pts = stroke.points;
+                if (i < 1) return;
+                const bt = stroke.brushType || 'standard';
+                switch (bt) {
+                    case 'calligraphy': this._renderCalligraphySeg(ctx, stroke, i); break;
+                    case 'marker':      this._renderMarkerSeg(ctx, stroke, i); break;
+                    case 'sketch':      this._renderSketchSeg(ctx, stroke, i); break;
+                    case 'oil':         this._renderOilSeg(ctx, stroke, i); break;
+                    default:            this._renderStandardSeg(ctx, stroke, i); break;
+                }
+            }
+
+            // ── 标准笔刷：平滑均匀，深度影响宽度和透明度 ──
+            _renderStandardSeg(ctx, stroke, i) {
+                const pts = stroke.points;
+                const p0 = pts[i - 1], p1 = pts[i];
+                const d = p1.depth !== undefined ? p1.depth : 0.5;
+                const alpha = 0.75 + d * 0.25; // 0.75~1.0
+                ctx.strokeStyle = stroke.color;
+                ctx.lineWidth = p1.width;
+                ctx.globalAlpha = alpha;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.beginPath();
+                ctx.moveTo(p0.x, p0.y);
+                ctx.lineTo(p1.x, p1.y);
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+            }
+
+            // ── 毛笔笔刷：方向感知 + 深浅变化（核心：深度→颜色浓淡） ──
+            _renderCalligraphySeg(ctx, stroke, i) {
+                const pts = stroke.points;
+                const p0 = pts[i - 1], p1 = pts[i];
+                const d = p1.depth !== undefined ? p1.depth : 0.5;
+                const angle = p1.angle || 0;
+                // 方向因子：垂直于笔锋方向(水平)粗，平行方向(垂直)细
+                const dirFactor = 0.25 + 0.75 * Math.abs(Math.sin(angle));
+                const w = Math.max(0.4, p1.width * dirFactor);
+                // ★ 核心：深度→颜色浓淡 ★
+                // 手近(d→1)：颜色深、饱和度高、宽度大
+                // 手远(d→0)：颜色浅、像淡墨、宽度小
+                const colorHsl = hexToHsl(stroke.color);
+                const lightness = 20 + d * 55;               // 20%~75% 亮度
+                const saturation = 30 + d * 70;              // 30%~100% 饱和度
+                const depthColor = `hsl(${colorHsl.h}, ${saturation}%, ${lightness}%)`;
+                const alpha = 0.55 + d * 0.45;               // 0.55~1.0
+                ctx.strokeStyle = depthColor;
+                ctx.lineWidth = w;
+                ctx.globalAlpha = alpha;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.beginPath();
+                ctx.moveTo(p0.x, p0.y);
+                ctx.lineTo(p1.x, p1.y);
+                ctx.stroke();
+                // 墨迹洇开效果：手近时更大更明显的墨点
+                const inkAlpha = 0.08 + d * 0.25;
+                const inkRadius = w * (0.25 + d * 0.55);
+                ctx.globalAlpha = inkAlpha;
+                ctx.fillStyle = depthColor;
+                ctx.beginPath();
+                ctx.arc(p1.x, p1.y, inkRadius, 0, Math.PI * 2);
+                ctx.fill();
+                // 额外微小墨点飞溅（手近时更多）
+                if (d > 0.4) {
+                    const splatterCount = Math.floor(d * 3);
+                    for (let s = 0; s < splatterCount; s++) {
+                        const sx = p1.x + (Math.random() - 0.5) * w * 1.8;
+                        const sy = p1.y + (Math.random() - 0.5) * w * 1.8;
+                        ctx.globalAlpha = 0.06 + d * 0.14;
+                        ctx.beginPath();
+                        ctx.arc(sx, sy, w * (0.08 + Math.random() * 0.25), 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+                ctx.globalAlpha = 1;
+            }
+
+            // ── 马克笔笔刷：等宽半透明叠加，深度→不透明度 ──
+            _renderMarkerSeg(ctx, stroke, i) {
+                const pts = stroke.points;
+                const p0 = pts[i - 1], p1 = pts[i];
+                const d = p1.depth !== undefined ? p1.depth : 0.5;
+                // 等宽：基本忽略速度，宽度恒定
+                const w = Math.max(1.2, this.baseWidth * (0.7 + d * 0.6));
+                // ★ 核心：深度→不透明度 ★ 手近浓，手远淡
+                const alpha = 0.15 + d * 0.50;               // 0.15~0.65
+                ctx.strokeStyle = stroke.color;
+                ctx.lineWidth = w;
+                ctx.globalAlpha = alpha;
+                ctx.lineCap = 'butt';    // 平头→马克笔特征
+                ctx.lineJoin = 'round';
+                ctx.beginPath();
+                ctx.moveTo(p0.x, p0.y);
+                ctx.lineTo(p1.x, p1.y);
+                ctx.stroke();
+                // 两端加深：模拟马克笔在起笔/收笔处墨水积聚
+                if (i % 4 === 0) {
+                    ctx.globalAlpha = alpha * 0.7;
+                    ctx.fillStyle = stroke.color;
+                    ctx.beginPath();
+                    ctx.arc(p1.x, p1.y, w * 0.4, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.globalAlpha = 1;
+            }
+
+            // ── 素描笔刷：抖动细线 + 排线纹理，深度→线条密度和暗度 ──
+            _renderSketchSeg(ctx, stroke, i) {
+                const pts = stroke.points;
+                const p0 = pts[i - 1], p1 = pts[i];
+                const d = p1.depth !== undefined ? p1.depth : 0.5;
+                const w = Math.max(0.4, Math.min(p1.width, 3.5));
+                // ★ 核心：深度→颜色暗度 ★
+                const colorHsl = hexToHsl(stroke.color);
+                const lightness = 15 + d * 65;               // 15%~80%
+                const sketchColor = `hsl(${colorHsl.h}, ${colorHsl.s * 0.6}%, ${lightness}%)`;
+                const alpha = 0.45 + d * 0.55;               // 0.45~1.0
+                ctx.strokeStyle = sketchColor;
+                ctx.lineWidth = w;
+                ctx.globalAlpha = alpha;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                // 主线（带强烈抖动）
+                const ox0 = p0.x + p0.jx, oy0 = p0.y + p0.jy;
+                const ox1 = p1.x + p1.jx, oy1 = p1.y + p1.jy;
+                ctx.beginPath();
+                ctx.moveTo(ox0, oy0);
+                ctx.lineTo(ox1, oy1);
+                ctx.stroke();
+                // ★ 排线：手近→多层排线（深阴影），手远→单线（浅草稿）★
+                const hatchCount = d > 0.6 ? 3 : (d > 0.3 ? 2 : 1);
+                const perpAngle = (p1.angle || 0) + Math.PI / 2;
+                for (let h = 0; h < hatchCount; h++) {
+                    const offset = w * (0.6 + h * 0.9);
+                    const ha = alpha * (0.15 + d * 0.18);
+                    ctx.globalAlpha = ha;
+                    ctx.lineWidth = w * (0.25 + d * 0.2);
+                    ctx.beginPath();
+                    ctx.moveTo(
+                        ox0 + Math.cos(perpAngle) * offset + (Math.random() - 0.5) * 1.5,
+                        oy0 + Math.sin(perpAngle) * offset + (Math.random() - 0.5) * 1.5
+                    );
+                    ctx.lineTo(
+                        ox1 + Math.cos(perpAngle) * offset + (Math.random() - 0.5) * 1.5,
+                        oy1 + Math.sin(perpAngle) * offset + (Math.random() - 0.5) * 1.5
+                    );
+                    ctx.stroke();
+                    // 反向排线增加交叉纹理
+                    if (h === 1 && d > 0.5) {
+                        const off2 = -offset * 0.7;
+                        ctx.beginPath();
+                        ctx.moveTo(ox0 + Math.cos(perpAngle) * off2, oy0 + Math.sin(perpAngle) * off2);
+                        ctx.lineTo(ox1 + Math.cos(perpAngle) * off2, oy1 + Math.sin(perpAngle) * off2);
+                        ctx.stroke();
+                    }
+                }
+                ctx.globalAlpha = 1;
+            }
+
+            // ── 油画笔刷：厚涂堆积 + 色相偏移，深度→颜料厚度 ──
+            _renderOilSeg(ctx, stroke, i) {
+                const pts = stroke.points;
+                const p0 = pts[i - 1], p1 = pts[i];
+                const d = p1.depth !== undefined ? p1.depth : 0.5;
+                const w = Math.max(1, p1.width);
+                // ★ 深度→颜料厚度（宽度大幅变化）★
+                const thicknessMult = 0.6 + d * 2.4;         // 0.6~3.0
+                const thickW = w * thicknessMult;
+                // 色相偏移模拟调色板混合
+                const hueShift = (Math.sin(i * 0.35) * 5 + (d - 0.5) * 8);
+                const oilColor = this._shiftHue(stroke.color, hueShift);
+                // 不透明度变化：手近时更厚重
+                const alpha = 0.6 + d * 0.4;                 // 0.6~1.0
+                ctx.strokeStyle = oilColor;
+                ctx.lineWidth = thickW;
+                ctx.globalAlpha = alpha * (0.8 + Math.random() * 0.2);
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.beginPath();
+                ctx.moveTo(p0.x, p0.y);
+                ctx.lineTo(p1.x, p1.y);
+                ctx.stroke();
+                // ★ 颜料团块：手近→大块堆积，手远→轻薄 ★
+                const blobInterval = d > 0.5 ? 2 : (d > 0.25 ? 3 : 5);
+                if (i % blobInterval === 0) {
+                    const blobAlpha = 0.15 + d * 0.40;       // 0.15~0.55
+                    const blobSize = thickW * (0.35 + d * 0.8);
+                    ctx.globalAlpha = blobAlpha;
+                    // 主色块
+                    ctx.fillStyle = this._shiftHue(stroke.color, hueShift + 2);
+                    ctx.beginPath();
+                    ctx.arc(p1.x, p1.y, blobSize, 0, Math.PI * 2);
+                    ctx.fill();
+                    // 高光点缀（手近时）
+                    if (d > 0.55) {
+                        ctx.globalAlpha = blobAlpha * 0.5;
+                        ctx.fillStyle = this._shiftHue(stroke.color, hueShift - 4);
+                        ctx.beginPath();
+                        ctx.arc(
+                            p1.x + (Math.random() - 0.5) * thickW * 0.6,
+                            p1.y + (Math.random() - 0.5) * thickW * 0.6,
+                            blobSize * 0.45, 0, Math.PI * 2
+                        );
+                        ctx.fill();
+                    }
+                }
+                // 额外纹理：细线模拟画笔鬃毛痕迹
+                if (i % 6 === 0 && d > 0.4) {
+                    ctx.globalAlpha = alpha * 0.2;
+                    ctx.strokeStyle = this._shiftHue(stroke.color, hueShift - 6);
+                    ctx.lineWidth = thickW * 0.15;
+                    ctx.beginPath();
+                    ctx.moveTo(
+                        p0.x + (Math.random() - 0.5) * thickW * 0.5,
+                        p0.y + (Math.random() - 0.5) * thickW * 0.5
+                    );
+                    ctx.lineTo(
+                        p1.x + (Math.random() - 0.5) * thickW * 0.5,
+                        p1.y + (Math.random() - 0.5) * thickW * 0.5
+                    );
+                    ctx.stroke();
+                }
+                ctx.globalAlpha = 1;
+            }
+
+            // 辅助：微调色相
+            _shiftHue(hex, degrees) {
+                const hsl = hexToHsl(hex);
+                return `hsl(${(hsl.h + degrees + 360) % 360}, ${hsl.s}%, ${hsl.l}%)`;
             }
 
             endStroke() {
@@ -613,22 +978,13 @@
                 for (const stroke of this.strokes) {
                     const pts = stroke.points;
                     if (pts.length < 2) continue;
-                    this.ctx.strokeStyle = stroke.color;
-                    this.ctx.lineCap = 'round';
-                    this.ctx.lineJoin = 'round';
-                    this.ctx.globalAlpha = 0.92;
                     for (let i = 1; i < pts.length; i++) {
-                        this.ctx.lineWidth = pts[i].width;
-                        this.ctx.beginPath();
-                        this.ctx.moveTo(pts[i - 1].x, pts[i - 1].y);
-                        this.ctx.lineTo(pts[i].x, pts[i].y);
-                        this.ctx.stroke();
+                        this._renderSegment(this.ctx, stroke, i);
                     }
-                    this.ctx.globalAlpha = 1;
                 }
             }
 
-            exportImage(bgColor = '#0d0d0d') {
+            exportImage(bgColor = '#0A0A1A') {
                 const tempCanvas = document.createElement('canvas');
                 tempCanvas.width = this.canvas.width;
                 tempCanvas.height = this.canvas.height;
@@ -1132,6 +1488,11 @@
                         f.alive = false;            // 从动画池移除
                     }
                 }
+                // 淘汰最旧的已完成植物，防止 completed 数组无限增长导致 resize 卡死
+                const maxC = FLORA_CONFIG.maxCompleted;
+                if (this.completed.length > maxC) {
+                    this.completed.splice(0, this.completed.length - maxC);
+                }
             }
 
             /** 只渲染正在生长的植物到 flora-canvas */
@@ -1285,6 +1646,11 @@
                 this.lastDetectSpeed = 0;
                 this.smoothSpeed = 0;
 
+                // 深度平滑（手离摄像头远近 → 笔刷浓淡/粗细变化）
+                this.targetDepth = 0.5;
+                this.smoothDepth = 0.5;
+                this.lastDetectDepth = 0.5;
+
                 // 花草模式开关
                 this.floraMode = false;
 
@@ -1404,6 +1770,8 @@
                 this.drawingEngine.redrawAll();
                 // 重绘已烘焙的花草（它们不在 strokes 数组里）
                 this.floraSystem.rebakeAll(drawingCtx);
+                // 立即重绘生长中的花草，避免 resize 清空后出现空白帧
+                this.floraSystem.renderGrowing();
                 this.drawSize = { w: drawW, h: drawH, offsetX, offsetY };
             }
 
@@ -1414,9 +1782,13 @@
 
             /** 主循环 — 60fps 驱动，含平滑插值 */
             loop(timestamp) {
+                // 摄像头未启动时停止循环，避免空转消耗资源
+                if (!this.cameraStarted || !this.handLandmarker) return;
+
                 requestAnimationFrame(this.loop);
 
-                if (!this.cameraStarted || !this.handLandmarker) return;
+                // 页面隐藏时跳过计算（浏览器会大幅降低 RAF 频率）
+                if (document.hidden) return;
 
                 // 计算帧间隔
                 const rawDt = Math.min((timestamp - this.lastLoopTime) / 1000, 0.1); // cap at 100ms
@@ -1444,7 +1816,8 @@
                     try {
                         results = this.handLandmarker.detectForVideo(cameraVideo, performance.now());
                     } catch (e) {
-                        // skip
+                        console.warn('MediaPipe 检测异常:', e.message || e);
+                        results = null;
                     }
                     if (results) {
                         this.processDetection(results, rawDt);
@@ -1458,12 +1831,17 @@
                     this.smoothX += (this.targetX - this.smoothX) * smoothFactor;
                     this.smoothY += (this.targetY - this.smoothY) * smoothFactor;
 
+                    // 平滑深度（避免突变）
+                    this.smoothDepth += (this.targetDepth - this.smoothDepth) * 0.22;
+
                     if (this.lastSmoothX !== null) {
                         const de = this.drawingEngine;
                         // 平滑速度衰减
                         this.smoothSpeed += (this.lastDetectSpeed - this.smoothSpeed) * smoothFactor;
 
-                        de.addPoint(this.smoothX, this.smoothY, this.smoothSpeed);
+                        de.setDepthFactor(this.smoothDepth);
+                        de.addPoint(this.smoothX, this.smoothY, this.smoothSpeed,
+                            this.lastSmoothX, this.lastSmoothY);
 
                         if (this.floraMode) {
                             this.floraSystem.spawnAlongSegment(
@@ -1503,6 +1881,12 @@
                 const classification = GestureClassifier.classify(landmarks);
                 const gesture = classification.gesture;
 
+                // ★ 深度因子：从手部尺寸映射到 0~1（0=远, 1=近）★
+                const rawHandSize = classification.handSize || 0.15;
+                this.targetDepth = Math.max(0, Math.min(1,
+                    (rawHandSize - CONFIG.depthHandSizeMin) / (CONFIG.depthHandSizeMax - CONFIG.depthHandSizeMin)
+                ));
+
                 // 防抖
                 for (const key of Object.keys(this.gestureFrameCounts)) {
                     if (key !== gesture) {
@@ -1522,9 +1906,14 @@
                     return;
                 }
 
-                // ---- 冷却检查：离散手势需间隔足够时间 ----
+                // ---- 离散手势多帧确认：防止单帧抖动误触发 ----
                 const DISCRETE_GESTURES = ['flora', 'cycle', 'undo'];
                 if (DISCRETE_GESTURES.includes(gesture)) {
+                    // 必须连续多帧检测到同一手势才触发
+                    if (this.gestureFrameCounts[gesture] < CONFIG.discreteGestureDebounce) {
+                        return;
+                    }
+                    // ---- 冷却检查：离散手势需间隔足够时间 ----
                     const now = performance.now();
                     const lastTime = this.lastGestureTriggerTime[gesture] || 0;
                     if (now - lastTime < CONFIG.gestureCooldown) {
@@ -1754,6 +2143,16 @@
             btn.style.pointerEvents = 'none';
         });
 
+        // 笔刷切换按钮
+        document.querySelectorAll('.brush-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.brush-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                app.drawingEngine.setBrushType(btn.dataset.brush);
+                app.updateUI(app.currentGesture, '笔刷: ' + btn.textContent);
+            });
+        });
+
         window.addEventListener('resize', () => {
             if (app.cameraStarted) app.resize();
         });
@@ -1822,7 +2221,7 @@
         console.log('    🤏  拇指+食指捏合 → 抬笔暂停');
         console.log('    👌  OK手势 → 切换花草/普通模式');
         console.log('    🖐️  五指张开 → 切换颜色');
-        console.log('    🖕  仅中指 → 撤销一笔');
+        console.log('    ✌️  食指+中指 → 撤销一笔');
         console.log('  快捷键：C=清空 Z=撤销 S=保存 F=切换花草模式');
     </script>
 </body>
